@@ -1,0 +1,52 @@
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+
+# Chaves e certificados
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.pub
+
+# Bancos, cópias e exportações
+*.sql
+*.dump
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.tar
+*.tar.gz
+*.zip
+backups/
+data/
+volumes/
+
+# Node.js
+node_modules/
+dist/
+build/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# n8n
+.n8n/
+.n8n-data/
+binaryData/
+
+# Docker e arquivos temporários
+*.pid
+*.log
+tmp/
+temp/
+
+# Editores e sistemas
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
