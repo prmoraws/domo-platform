@@ -7,8 +7,87 @@ const projectDirectory = resolve(
   '..',
 );
 
-const activeDatabase = 'domo_replica';
-const stagingDatabase = 'domo_replica_staging';
+const getReplicaConfiguration = () => {
+  const result = spawnSync(
+    'docker',
+    [
+      'compose',
+      'config',
+      '--format',
+      'json',
+    ],
+    {
+      cwd: projectDirectory,
+      encoding: 'utf8',
+    },
+  );
+
+  if (result.status !== 0) {
+    if (result.stderr) {
+      console.error(result.stderr);
+    }
+
+    throw new Error(
+      'Não foi possível ler a configuração do Compose',
+    );
+  }
+
+  const compose = JSON.parse(
+    result.stdout,
+  );
+
+  const activeDatabase =
+    compose.services?.api?.environment
+      ?.MYSQL_DATABASE;
+
+  const blueDatabase =
+    compose.services?.mariadb?.environment
+      ?.REPLICA_BLUE_DATABASE;
+
+  const greenDatabase =
+    compose.services?.mariadb?.environment
+      ?.REPLICA_GREEN_DATABASE;
+
+  for (
+    const databaseName of [
+      activeDatabase,
+      blueDatabase,
+      greenDatabase,
+    ]
+  ) {
+    if (
+      typeof databaseName !== 'string' ||
+      !/^[a-zA-Z0-9_]+$/.test(databaseName)
+    ) {
+      throw new Error(
+        'Configuração azul/verde inválida',
+      );
+    }
+  }
+
+  if (blueDatabase === greenDatabase) {
+    throw new Error(
+      'Os bancos azul e verde não podem ser iguais',
+    );
+  }
+
+  if (
+    activeDatabase !== blueDatabase &&
+    activeDatabase !== greenDatabase
+  ) {
+    throw new Error(
+      'O banco ativo não corresponde aos slots configurados',
+    );
+  }
+
+  return {
+    activeDatabase,
+    inactiveDatabase:
+      activeDatabase === blueDatabase
+        ? greenDatabase
+        : blueDatabase,
+  };
+};
 
 const runMariaDb = (sql) => {
   const result = spawnSync(
@@ -296,6 +375,11 @@ const compareCounts = (
 };
 
 try {
+  const {
+    activeDatabase,
+    inactiveDatabase,
+  } = getReplicaConfiguration();
+
   console.log(
     'VALIDAÇÃO DA RÉPLICA DOMO',
   );
@@ -305,14 +389,14 @@ try {
   );
 
   console.log(
-    `Staging: ${stagingDatabase}\n`,
+    `Inativo: ${inactiveDatabase}\n`,
   );
 
   const activeTables =
     getTables(activeDatabase);
 
   const stagingTables =
-    getTables(stagingDatabase);
+    getTables(inactiveDatabase);
 
   if (
     activeTables.length === 0 ||
@@ -340,13 +424,13 @@ try {
   const columnsAreEqual = compareLists(
     'as definições das colunas',
     getColumnDefinitions(activeDatabase),
-    getColumnDefinitions(stagingDatabase),
+    getColumnDefinitions(inactiveDatabase),
   );
 
   const indexesAreEqual = compareLists(
     'as definições dos índices',
     getIndexDefinitions(activeDatabase),
-    getIndexDefinitions(stagingDatabase),
+    getIndexDefinitions(inactiveDatabase),
   );
 
   let countsAreEqual = false;
@@ -359,7 +443,7 @@ try {
         activeTables,
       ),
       getExactCounts(
-        stagingDatabase,
+        inactiveDatabase,
         stagingTables,
       ),
     );
