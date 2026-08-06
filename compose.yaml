@@ -66,12 +66,13 @@ services:
     networks:
       - backend
       - edge
-      
+
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.33.4
     container_name: domo-n8n
     restart: unless-stopped
+
 
     environment:
       TZ: ${TZ}
@@ -123,6 +124,9 @@ services:
     image: domo-api:0.1.0
     container_name: domo-api
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
 
     environment:
       TZ: ${TZ}
@@ -130,6 +134,11 @@ services:
       API_HOST: 0.0.0.0
       API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN}
       LOG_LEVEL: info
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_READONLY_USER}
+      MYSQL_PASSWORD: ${MYSQL_READONLY_PASSWORD}
 
     ports:
       - "127.0.0.1:${API_PORT}:3001"
@@ -157,7 +166,7 @@ volumes:
     name: domo-n8n-data
 
   mysql_data:
-    name: domo-mysql-data  
+    name: domo-mysql-data
 
 networks:
   backend:

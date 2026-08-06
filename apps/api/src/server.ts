@@ -4,6 +4,11 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 
+import {
+  closeDatabase,
+  getDatabaseStatus,
+} from './database.js';
+
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
@@ -84,6 +89,38 @@ app.get(
   },
 );
 
+app.get(
+  '/internal/database/status',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    try {
+      const database = await getDatabaseStatus();
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        database,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.error(
+        { error },
+        'Falha ao verificar a conexão com o MySQL',
+      );
+
+      return reply.code(503).send({
+        status: 'error',
+        service: 'domo-api',
+        error: 'database_unavailable',
+        message: 'Banco de dados indisponível',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+);
+
 const port = Number(process.env.API_PORT ?? 3001);
 const host = process.env.API_HOST ?? '0.0.0.0';
 
@@ -94,6 +131,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'Encerrando a API DOMO');
   await app.close();
+  await closeDatabase();
   process.exit(0);
 };
 
