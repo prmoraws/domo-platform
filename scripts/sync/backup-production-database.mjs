@@ -14,6 +14,7 @@ import {
   join,
 } from 'node:path';
 
+process.umask(0o077);
 const sshHost = 'domo-production';
 const productionDatabase = 'domo_moraw';
 
@@ -89,6 +90,21 @@ gzip -t "$remote_directory/$file_name"
 printf 'Backup remoto criado e validado\\n'
 `;
 
+const remoteCleanupScript = `
+set -euo pipefail
+
+remote_directory="$1"
+file_name="$2"
+
+rm -- \
+  "$remote_directory/$file_name" \
+  "$remote_directory/$file_name.sha256"
+
+rmdir "$remote_directory"
+
+printf 'Backup temporário remoto removido\n'
+`;
+
 try {
   console.log('Iniciando backup da produção DOMO');
   console.log(`Banco: ${productionDatabase}`);
@@ -150,6 +166,36 @@ try {
       cwd: localDirectory,
     },
   );
+
+    try {
+    execFileSync(
+      'ssh',
+      [
+        sshHost,
+        'bash',
+        '-s',
+        '--',
+        remoteDirectory,
+        fileName,
+      ],
+      {
+        input: remoteCleanupScript,
+        stdio: [
+          'pipe',
+          'inherit',
+          'inherit',
+        ],
+      },
+    );
+  } catch {
+    console.warn(
+      '\nAVISO: backup local validado, mas a limpeza remota falhou.',
+    );
+
+    console.warn(
+      `Temporário remoto pendente: ${remoteDirectory}`,
+    );
+  }
 
   console.log('\nSINCRONIZAÇÃO DE BACKUP CONCLUÍDA');
   console.log(
