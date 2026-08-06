@@ -1,10 +1,56 @@
-import Fastify from 'fastify';
+import { timingSafeEqual } from 'node:crypto';
+import Fastify, {
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
   },
 });
+
+const internalToken = process.env.API_INTERNAL_TOKEN;
+
+if (!internalToken || internalToken.length < 32) {
+  throw new Error(
+    'API_INTERNAL_TOKEN precisa estar configurado com pelo menos 32 caracteres',
+  );
+}
+
+const tokenIsValid = (receivedToken: string): boolean => {
+  const received = Buffer.from(receivedToken);
+  const expected = Buffer.from(internalToken);
+
+  if (received.length !== expected.length) {
+    return false;
+  }
+
+  return timingSafeEqual(received, expected);
+};
+
+const requireInternalAuthentication = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => {
+  const authorization = request.headers.authorization;
+
+  if (!authorization?.startsWith('Bearer ')) {
+    return reply.code(401).send({
+      error: 'unauthorized',
+      message: 'Token de acesso não informado',
+    });
+  }
+
+  const receivedToken = authorization.slice('Bearer '.length);
+
+  if (!tokenIsValid(receivedToken)) {
+    return reply.code(401).send({
+      error: 'unauthorized',
+      message: 'Token de acesso inválido',
+    });
+  }
+};
 
 app.get('/', async () => {
   return {
@@ -22,6 +68,21 @@ app.get('/health', async () => {
     timestamp: new Date().toISOString(),
   };
 });
+
+app.get(
+  '/internal/status',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async () => {
+    return {
+      status: 'ok',
+      service: 'domo-api',
+      access: 'internal',
+      timestamp: new Date().toISOString(),
+    };
+  },
+);
 
 const port = Number(process.env.API_PORT ?? 3001);
 const host = process.env.API_HOST ?? '0.0.0.0';
