@@ -31,7 +31,6 @@ const backupDirectory = join(
   'production',
 );
 
-const stagingDatabase = 'domo_replica_staging';
 
 const findBackupFiles = (directory) => {
   const files = [];
@@ -97,7 +96,89 @@ const run = (
   return result;
 };
 
+const getReplicaConfiguration = () => {
+  const result = run(
+    'docker',
+    [
+      'compose',
+      'config',
+      '--format',
+      'json',
+    ],
+    {
+      stdio: [
+        'ignore',
+        'pipe',
+        'inherit',
+      ],
+    },
+  );
+
+  const compose = JSON.parse(
+    result.stdout,
+  );
+
+  const activeDatabase =
+    compose.services?.api?.environment
+      ?.MYSQL_DATABASE;
+
+  const blueDatabase =
+    compose.services?.mariadb?.environment
+      ?.REPLICA_BLUE_DATABASE;
+
+  const greenDatabase =
+    compose.services?.mariadb?.environment
+      ?.REPLICA_GREEN_DATABASE;
+
+  const databaseNames = [
+    activeDatabase,
+    blueDatabase,
+    greenDatabase,
+  ];
+
+  for (const databaseName of databaseNames) {
+    if (
+      typeof databaseName !== 'string' ||
+      !/^[a-zA-Z0-9_]+$/.test(databaseName)
+    ) {
+      throw new Error(
+        'Configuração azul/verde inválida',
+      );
+    }
+  }
+
+  if (blueDatabase === greenDatabase) {
+    throw new Error(
+      'Os bancos azul e verde não podem ser iguais',
+    );
+  }
+
+  if (
+    activeDatabase !== blueDatabase &&
+    activeDatabase !== greenDatabase
+  ) {
+    throw new Error(
+      'MYSQL_DATABASE não corresponde a um slot azul/verde',
+    );
+  }
+
+  const inactiveDatabase =
+    activeDatabase === blueDatabase
+      ? greenDatabase
+      : blueDatabase;
+
+  return {
+    activeDatabase,
+    inactiveDatabase,
+  };
+};
+
 try {
+  const {
+    activeDatabase,
+    inactiveDatabase,
+  } = getReplicaConfiguration();
+
   const backupFiles = findBackupFiles(
     backupDirectory,
   );
@@ -122,9 +203,9 @@ try {
     );
   }
 
-  console.log('RESTAURAÇÃO SEGURA PARA STAGING');
+  console.log('RESTAURAÇÃO SEGURA NO SLOT INATIVO');
   console.log(`Backup: ${latestBackup}`);
-  console.log(`Destino: ${stagingDatabase}`);
+  console.log(`Destino: ${inactiveDatabase}`);
 
   run(
     'gzip',
@@ -138,9 +219,9 @@ try {
   );
 
   const prepareSql = `
-DROP DATABASE IF EXISTS \`${stagingDatabase}\`;
+DROP DATABASE IF EXISTS \`${inactiveDatabase}\`;
 
-CREATE DATABASE \`${stagingDatabase}\`
+CREATE DATABASE \`${inactiveDatabase}\`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 `;
@@ -175,7 +256,7 @@ docker compose exec -T mariadb \
   'exec mariadb \
     --user=root \
     --password="$MYSQL_ROOT_PASSWORD" \
-    ${stagingDatabase}'
+    ${inactiveDatabase}'
 `;
 
   run(
@@ -194,7 +275,7 @@ docker compose exec -T mariadb \
   const validationSql = `
 SELECT COUNT(*)
 FROM information_schema.tables
-WHERE table_schema = '${stagingDatabase}'
+WHERE table_schema = '${inactiveDatabase}'
   AND table_type = 'BASE TABLE';
 `;
 
@@ -232,10 +313,11 @@ WHERE table_schema = '${stagingDatabase}'
     );
   }
 
-  console.log('\nSTAGING RESTAURADO COM SUCESSO');
+  console.log('\nSLOT INATIVO RESTAURADO COM SUCESSO');
   console.log(`Tabelas encontradas: ${tableCount}`);
+  console.log(`Slot atualizado: ${inactiveDatabase}`);
   console.log(
-    'A réplica ativa domo_replica não foi modificada.',
+    `A réplica ativa ${activeDatabase} não foi modificada.`,
   );
 } catch (error) {
   console.error('\nERRO NA RESTAURAÇÃO DO STAGING');
