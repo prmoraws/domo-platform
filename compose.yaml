@@ -31,9 +31,9 @@ services:
     networks:
       - backend
 
-  mysql:
-    image: mysql:8.4.11
-    container_name: domo-mysql-replica
+  mariadb:
+    image: mariadb:10.11.18
+    container_name: domo-mariadb-replica
     restart: unless-stopped
 
     environment:
@@ -45,19 +45,19 @@ services:
 
     command:
       - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_0900_ai_ci
+      - --collation-server=utf8mb4_unicode_ci
 
     ports:
       - "127.0.0.1:3307:3306"
 
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d:ro
+      - mariadb_data:/var/lib/mysql
+      - ./infrastructure/mariadb/init:/docker-entrypoint-initdb.d:ro
 
     healthcheck:
       test:
         - CMD-SHELL
-        - mysqladmin ping -h 127.0.0.1 -uroot -p"$${MYSQL_ROOT_PASSWORD}" --silent
+        - healthcheck.sh --connect --innodb_initialized
       interval: 10s
       timeout: 5s
       retries: 10
@@ -125,7 +125,7 @@ services:
     container_name: domo-api
     restart: unless-stopped
     depends_on:
-      mysql:
+      mariadb:
         condition: service_healthy
 
     environment:
@@ -134,7 +134,7 @@ services:
       API_HOST: 0.0.0.0
       API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN}
       LOG_LEVEL: info
-      MYSQL_HOST: mysql
+      MYSQL_HOST: mariadb
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_READONLY_USER}
@@ -165,8 +165,8 @@ volumes:
   n8n_data:
     name: domo-n8n-data
 
-  mysql_data:
-    name: domo-mysql-data
+  mariadb_data:
+    name: domo-mariadb-data
 
 networks:
   backend:

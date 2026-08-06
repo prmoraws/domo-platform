@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-mysql \
+mariadb \
   --protocol=socket \
   -uroot \
   -p"${MYSQL_ROOT_PASSWORD}" <<SQL
