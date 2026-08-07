@@ -6,6 +6,10 @@ import {
   resolve,
 } from 'node:path';
 
+import {
+  startSyncRun,
+} from './sync-run-guard.mjs';
+
 const projectDirectory = resolve(
   import.meta.dirname,
   '..',
@@ -95,6 +99,28 @@ if (!executeRequested) {
   process.exit(0);
 }
 
+let syncRun;
+
+try {
+  syncRun = startSyncRun();
+} catch (error) {
+  console.error(
+    '\nSINCRONIZAÇÃO NÃO INICIADA',
+  );
+
+  console.error(
+    error instanceof Error
+      ? error.message
+      : 'Não foi possível obter o bloqueio',
+  );
+
+  process.exit(1);
+}
+
+let finalStatus = 'success';
+let finalMessage =
+  'Sincronização concluída com sucesso';
+
 try {
   for (
     const [index, step] of steps.entries()
@@ -125,5 +151,21 @@ try {
     'As etapas seguintes não foram executadas.',
   );
 
-  process.exit(1);
+  finalStatus = 'error';
+
+  finalMessage =
+    error instanceof Error
+      ? error.message
+      : 'Erro desconhecido';
+
+  process.exitCode = 1;
+} finally {
+  syncRun.finish({
+    status: finalStatus,
+    message: finalMessage,
+  });
+
+  console.log(
+    `Estado gravado em: ${syncRun.statusFile}`,
+  );
 }
