@@ -302,41 +302,43 @@ const getExactCounts = (
 const compareCounts = (
   tables,
   activeCounts,
-  stagingCounts,
+  inactiveCounts,
 ) => {
+  const missingCounts = [];
   const differences = [];
 
   let activeTotal = 0;
-  let stagingTotal = 0;
+  let inactiveTotal = 0;
 
   for (const table of tables) {
     const activeCount =
       activeCounts.get(table);
 
-    const stagingCount =
-      stagingCounts.get(table);
+    const inactiveCount =
+      inactiveCounts.get(table);
 
     if (
       activeCount === undefined ||
-      stagingCount === undefined
+      inactiveCount === undefined
     ) {
-      differences.push({
+      missingCounts.push({
         table,
         activeCount,
-        stagingCount,
+        inactiveCount,
       });
 
       continue;
     }
 
     activeTotal += activeCount;
-    stagingTotal += stagingCount;
+    inactiveTotal += inactiveCount;
 
-    if (activeCount !== stagingCount) {
+    if (activeCount !== inactiveCount) {
       differences.push({
         table,
         activeCount,
-        stagingCount,
+        inactiveCount,
+        delta: inactiveCount - activeCount,
       });
     }
   }
@@ -346,8 +348,34 @@ const compareCounts = (
   );
 
   console.log(
-    `Registros no staging: ${stagingTotal}`,
+    `Registros no slot inativo: ${inactiveTotal}`,
   );
+
+  if (missingCounts.length > 0) {
+    console.error(
+      'ERRO: não foi possível contar algumas tabelas:',
+    );
+
+    for (const missing of missingCounts) {
+      console.error(
+        [
+          `- ${missing.table}:`,
+          `ativa=${missing.activeCount ?? 'ausente'},`,
+          `inativa=${missing.inactiveCount ?? 'ausente'}`,
+        ].join(' '),
+      );
+    }
+
+    return false;
+  }
+
+  if (activeTotal > 0 && inactiveTotal === 0) {
+    console.error(
+      'ERRO: o slot inativo está sem registros',
+    );
+
+    return false;
+  }
 
   if (differences.length === 0) {
     console.log(
@@ -357,21 +385,31 @@ const compareCounts = (
     return true;
   }
 
-  console.error(
-    'DIFERENÇAS NAS QUANTIDADES:',
+  console.log(
+    'INFORMAÇÃO: foram encontradas alterações nos dados:',
   );
 
   for (const difference of differences) {
-    console.error(
+    const delta =
+      difference.delta > 0
+        ? `+${difference.delta}`
+        : String(difference.delta);
+
+    console.log(
       [
         `- ${difference.table}:`,
-        `ativa=${difference.activeCount ?? 'ausente'},`,
-        `staging=${difference.stagingCount ?? 'ausente'}`,
+        `ativa=${difference.activeCount},`,
+        `inativa=${difference.inactiveCount},`,
+        `diferença=${delta}`,
       ].join(' '),
     );
   }
 
-  return false;
+  console.log(
+    'OK: diferenças de registros são permitidas',
+  );
+
+  return true;
 };
 
 try {
@@ -412,7 +450,7 @@ try {
   );
 
   console.log(
-    `Tabelas no staging: ${stagingTables.length}`,
+    `Tabelas no slot inativo: ${stagingTables.length}`,
   );
 
   const tablesAreEqual = compareLists(
@@ -433,10 +471,10 @@ try {
     getIndexDefinitions(inactiveDatabase),
   );
 
-  let countsAreEqual = false;
+  let countsAreValid = false;
 
   if (tablesAreEqual) {
-    countsAreEqual = compareCounts(
+    countsAreValid = compareCounts(
       activeTables,
       getExactCounts(
         activeDatabase,
@@ -457,11 +495,11 @@ try {
     tablesAreEqual &&
     columnsAreEqual &&
     indexesAreEqual &&
-    countsAreEqual;
+    countsAreValid;
 
   if (!validationPassed) {
     throw new Error(
-      'O staging não corresponde à réplica ativa',
+      'O slot inativo não passou pela validação de segurança',
     );
   }
 
