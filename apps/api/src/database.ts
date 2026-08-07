@@ -235,6 +235,50 @@ export const getDatabaseCatalog = async () => {
   };
 };
 
+interface RecordCountRow extends RowDataPacket {
+  total: number;
+}
+
+export const countTableRecords = async (
+  tableName: string,
+) => {
+  if (!/^[a-z0-9_]+$/.test(tableName)) {
+    throw new Error('Nome de tabela inválido');
+  }
+
+  const catalog = await getDatabaseCatalog();
+
+  const table = catalog.tables.find(
+    item => item.name === tableName,
+  );
+
+  if (!table) {
+    throw new Error('Tabela não encontrada');
+  }
+
+  if (!table.queryable) {
+    throw new Error('Tabela não autorizada para consulta');
+  }
+
+  const [rows] = await pool.query<RecordCountRow[]>(`
+    SELECT COUNT(*) AS total
+    FROM \`${tableName}\`
+  `);
+
+  const result = rows[0];
+
+  if (!result) {
+    throw new Error('MariaDB não retornou a contagem');
+  }
+
+  return {
+    operation: 'count_records',
+    table: tableName,
+    total: Number(result.total),
+    sensitivity: table.sensitivity,
+  };
+};
+
 export const closeDatabase = async (): Promise<void> => {
   await pool.end();
 };

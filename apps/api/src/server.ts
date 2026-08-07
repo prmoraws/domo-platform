@@ -6,6 +6,7 @@ import Fastify, {
 
 import {
   closeDatabase,
+  countTableRecords,
   getDatabaseCatalog,
   getDatabaseStatus,
   getDatabaseSummary,
@@ -179,6 +180,71 @@ app.get(
         service: 'domo-api',
         error: 'database_catalog_unavailable',
         message: 'Catálogo do banco indisponível',
+      });
+    }
+  },
+);
+
+interface DatabaseQueryBody {
+  operation?: unknown;
+  table?: unknown;
+}
+
+app.post<{
+  Body: DatabaseQueryBody;
+}>(
+  '/internal/database/query',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    const {
+      operation,
+      table,
+    } = request.body ?? {};
+
+    if (operation !== 'count_records') {
+      return reply.code(400).send({
+        status: 'error',
+        error: 'operation_not_allowed',
+        message: 'Operação de consulta não autorizada',
+      });
+    }
+
+    if (typeof table !== 'string') {
+      return reply.code(400).send({
+        status: 'error',
+        error: 'invalid_table',
+        message: 'Tabela não informada corretamente',
+      });
+    }
+
+    try {
+      const result = await countTableRecords(table);
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        result,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.warn(
+        {
+          error,
+          operation,
+          table,
+        },
+        'Consulta ao banco recusada',
+      );
+
+      return reply.code(400).send({
+        status: 'error',
+        error: 'query_refused',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Consulta recusada',
       });
     }
   },
