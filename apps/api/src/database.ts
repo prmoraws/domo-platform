@@ -89,6 +89,152 @@ export const getDatabaseSummary = async () => {
   };
 };
 
+
+interface DatabaseCatalogRow extends RowDataPacket {
+  tableName: string;
+  columnName: string;
+  ordinalPosition: number;
+  dataType: string;
+  columnType: string;
+  isNullable: 'YES' | 'NO';
+  columnKey: string;
+}
+
+const technicalTables = new Set([
+  'cache',
+  'cache_locks',
+  'failed_jobs',
+  'jobs',
+  'job_batches',
+  'migrations',
+  'password_reset_tokens',
+  'personal_access_tokens',
+  'sessions',
+]);
+
+const sensitiveTables = new Set([
+  'cadastro_tdas',
+  'captacao_credenciados',
+  'captacao_pessoas',
+  'captacao_tdas',
+  'captacoes',
+  'convidados',
+  'credenciados',
+  'pessoas',
+  'reeducandos',
+  'users',
+]);
+
+const classifyTable = (tableName: string) => {
+  if (technicalTables.has(tableName)) {
+    return {
+      category: 'technical',
+      sensitivity: 'internal',
+      queryable: false,
+    };
+  }
+
+  if (sensitiveTables.has(tableName)) {
+    return {
+      category: 'business',
+      sensitivity: 'personal',
+      queryable: true,
+    };
+  }
+
+  if (tableName.startsWith('politica_')) {
+    return {
+      category: 'politics',
+      sensitivity: 'restricted',
+      queryable: true,
+    };
+  }
+
+  if (
+    tableName.startsWith('oficio_') ||
+    tableName === 'documentos'
+  ) {
+    return {
+      category: 'documents',
+      sensitivity: 'restricted',
+      queryable: true,
+    };
+  }
+
+  return {
+    category: 'business',
+    sensitivity: 'normal',
+    queryable: true,
+  };
+};
+
+export const getDatabaseCatalog = async () => {
+  const [rows] = await pool.query<DatabaseCatalogRow[]>(`
+    SELECT
+      table_name AS tableName,
+      column_name AS columnName,
+      ordinal_position AS ordinalPosition,
+      data_type AS dataType,
+      column_type AS columnType,
+      is_nullable AS isNullable,
+      column_key AS columnKey
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+    ORDER BY table_name, ordinal_position
+  `);
+
+  const tables = new Map<
+    string,
+    {
+      name: string;
+      category: string;
+      sensitivity: string;
+      queryable: boolean;
+      columns: Array<{
+        name: string;
+        dataType: string;
+        columnType: string;
+        nullable: boolean;
+        key: string | null;
+      }>;
+    }
+  >();
+
+  for (const row of rows) {
+    let table = tables.get(row.tableName);
+
+    if (!table) {
+      table = {
+        name: row.tableName,
+        ...classifyTable(row.tableName),
+        columns: [],
+      };
+
+      tables.set(row.tableName, table);
+    }
+
+    table.columns.push({
+      name: row.columnName,
+      dataType: row.dataType,
+      columnType: row.columnType,
+      nullable: row.isNullable === 'YES',
+      key: row.columnKey || null,
+    });
+  }
+
+  const catalog = [...tables.values()];
+
+  return {
+    generatedAt: new Date().toISOString(),
+    dynamic: true,
+    tableCount: catalog.length,
+    queryableTableCount: catalog.filter(
+      table => table.queryable,
+    ).length,
+    tables: catalog,
+  };
+};
+
 export const closeDatabase = async (): Promise<void> => {
   await pool.end();
 };

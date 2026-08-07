@@ -6,6 +6,7 @@ import Fastify, {
 
 import {
   closeDatabase,
+  getDatabaseCatalog,
   getDatabaseStatus,
   getDatabaseSummary,
 } from './database.js';
@@ -147,6 +148,37 @@ app.get(
         status: 'error',
         error: 'database_unavailable',
         message: 'Não foi possível consultar o banco',
+      });
+    }
+  },
+);
+
+
+app.get(
+  '/internal/database/catalog',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    try {
+      const database = await getDatabaseCatalog();
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        database,
+      };
+    } catch (error) {
+      request.log.error(
+        { error },
+        'Falha ao gerar catálogo do banco',
+      );
+
+      return reply.code(503).send({
+        status: 'error',
+        service: 'domo-api',
+        error: 'database_catalog_unavailable',
+        message: 'Catálogo do banco indisponível',
       });
     }
   },
