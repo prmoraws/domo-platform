@@ -12,6 +12,10 @@ import {
   getDatabaseSummary,
 } from './database.js';
 
+import {
+  interpretDatabaseQuestion,
+} from './whatsapp-query-interpreter.js';
+
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
@@ -245,6 +249,47 @@ app.post<{
           error instanceof Error
             ? error.message
             : 'Consulta recusada',
+      });
+    }
+  },
+);
+
+interface WhatsAppInterpretBody {
+  question?: unknown;
+}
+
+app.post<{
+  Body: WhatsAppInterpretBody;
+}>(
+  '/internal/whatsapp/interpret',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    try {
+      const query = interpretDatabaseQuestion(
+        request.body?.question,
+      );
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        query,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.info(
+        { error },
+        'Pergunta do WhatsApp não reconhecida',
+      );
+
+      return reply.code(400).send({
+        status: 'error',
+        error: 'question_not_recognized',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Pergunta não reconhecida',
       });
     }
   },
