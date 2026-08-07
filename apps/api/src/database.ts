@@ -66,6 +66,29 @@ export const getDatabaseStatus = async () => {
   };
 };
 
+interface DatabaseSummaryRow extends RowDataPacket {
+  tableCount: number;
+}
+
+export const getDatabaseSummary = async () => {
+  const [rows] = await pool.query<DatabaseSummaryRow[]>(`
+    SELECT COUNT(*) AS tableCount
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE()
+      AND table_type = 'BASE TABLE'
+  `);
+
+  const summary = rows[0];
+
+  if (!summary) {
+    throw new Error('MariaDB não retornou o resumo do banco');
+  }
+
+  return {
+    tableCount: Number(summary.tableCount),
+  };
+};
+
 export const closeDatabase = async (): Promise<void> => {
   await pool.end();
 };

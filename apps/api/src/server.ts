@@ -7,6 +7,7 @@ import Fastify, {
 import {
   closeDatabase,
   getDatabaseStatus,
+  getDatabaseSummary,
 } from './database.js';
 
 const app = Fastify({
@@ -116,6 +117,36 @@ app.get(
         error: 'database_unavailable',
         message: 'Banco de dados indisponível',
         timestamp: new Date().toISOString(),
+      });
+    }
+  },
+);
+
+app.get(
+  '/internal/database/summary',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    try {
+      const summary = await getDatabaseSummary();
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        database: summary,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.error(
+        { error },
+        'Falha ao consultar o resumo do MariaDB',
+      );
+
+      return reply.code(503).send({
+        status: 'error',
+        error: 'database_unavailable',
+        message: 'Não foi possível consultar o banco',
       });
     }
   },
