@@ -44,7 +44,7 @@ services:
     volumes:
       - evolution_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+      test: [ "CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\"" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -55,11 +55,11 @@ services:
     image: redis:7.4-alpine
     container_name: domo-evolution-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: [ "redis-server", "--appendonly", "yes" ]
     volumes:
       - evolution_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -144,12 +144,10 @@ services:
       - backend
       - edge
 
-
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.33.4
     container_name: domo-n8n
     restart: unless-stopped
-
 
     environment:
       TZ: ${TZ}
@@ -239,6 +237,27 @@ services:
       - backend
       - edge
 
+  ollama:
+    image: ollama/ollama:0.32.6
+    container_name: domo-ollama
+    restart: unless-stopped
+
+    gpus: all
+
+    environment:
+      TZ: ${TZ}
+      OLLAMA_KEEP_ALIVE: 5m
+
+    ports:
+      - "127.0.0.1:11434:11434"
+
+    volumes:
+      - ollama_data:/root/.ollama
+
+    networks:
+      - backend
+      - edge
+
 volumes:
   evolution_postgres_data:
     name: domo-evolution-postgres-data
@@ -257,6 +276,9 @@ volumes:
 
   mariadb_data:
     name: domo-mariadb-data
+
+  ollama_data:
+    name: domo-ollama-data
 
 networks:
   backend:
