@@ -290,10 +290,7 @@ export const executeSafeSelect = async (
 
   const allowedTables = new Set(
     catalog.tables
-      .filter(table =>
-        table.queryable &&
-        table.sensitivity === 'normal',
-      )
+      .filter(table => table.queryable)
       .map(table => table.name),
   );
 
@@ -302,6 +299,11 @@ export const executeSafeSelect = async (
     {
       allowedTables,
       maximumRows: 20,
+      blockedColumns: new Set([
+        'password',
+        'remember_token',
+        'token',
+      ]),
     },
   );
 

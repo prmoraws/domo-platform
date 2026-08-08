@@ -1,5 +1,6 @@
 export interface SafeSqlOptions {
   allowedTables: ReadonlySet<string>;
+  blockedColumns?: ReadonlySet<string>;
   maximumRows?: number;
 }
 
@@ -51,6 +52,30 @@ export const validateSelectSql = (
   if (forbiddenPattern.test(sql)) {
     throw new Error('A SQL contém uma operação proibida');
   }
+
+  if (
+  /(?:\bselect|,)\s*(?:distinct\s+)?(?:`?[a-z0-9_]+`?\.)?\*/i
+    .test(sql)
+) {
+  throw new Error(
+    'SELECT * não é permitido; informe as colunas',
+  );
+}
+
+for (
+  const column of options.blockedColumns ?? []
+) {
+  const pattern = new RegExp(
+    `\\b${column}\\b`,
+    'i',
+  );
+
+  if (pattern.test(sql)) {
+    throw new Error(
+      `Coluna protegida: ${column}`,
+    );
+  }
+}
 
   const tables = [
     ...sql.matchAll(

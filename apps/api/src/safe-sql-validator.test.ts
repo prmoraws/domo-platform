@@ -49,6 +49,27 @@ test('aceita JOIN entre tabelas autorizadas', () => {
     { allowedTables },
   );
 
+  test('recusa SELECT com coluna protegida', () => {
+    assert.throws(() =>
+      validateSelectSql(
+        'SELECT password FROM pessoas',
+        {
+          allowedTables,
+          blockedColumns: new Set(['password']),
+        },
+      ),
+    );
+  });
+
+  test('recusa SELECT com todas as colunas', () => {
+    assert.throws(() =>
+      validateSelectSql(
+        'SELECT * FROM pessoas',
+        { allowedTables },
+      ),
+    );
+  });
+
   assert.deepEqual(
     result.tables.sort(),
     ['igrejas', 'pessoas'],
