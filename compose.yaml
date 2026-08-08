@@ -213,6 +213,8 @@ services:
       API_HOST: 0.0.0.0
       API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN}
       LOG_LEVEL: info
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3.5:4b
       MYSQL_HOST: mariadb
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}

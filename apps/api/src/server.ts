@@ -14,6 +14,12 @@ import {
 } from './database.js';
 
 import {
+  generateDatabaseAnswer,
+  generateDatabaseQuery,
+  selectRelevantTables,
+} from './ollama.js';
+
+import {
   interpretDatabaseQuestion,
 } from './whatsapp-query-interpreter.js';
 
@@ -328,6 +334,136 @@ app.post<{
       return reply.code(400).send({
         status: 'error',
         error: 'safe_query_refused',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Consulta recusada',
+      });
+    }
+  },
+);
+
+interface AssistantDatabaseQueryBody {
+  question?: unknown;
+}
+
+const protectedSchemaColumn =
+  /^(password|senha|token|remember_token|secret|api_key)$/i;
+
+app.post<{
+  Body: AssistantDatabaseQueryBody;
+}>(
+  '/internal/assistant/query',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    const rawQuestion =
+      request.body?.question;
+
+    if (
+      typeof rawQuestion !== 'string' ||
+      rawQuestion.trim().length < 3 ||
+      rawQuestion.length > 500
+    ) {
+      return reply.code(400).send({
+        status: 'error',
+        error: 'invalid_question',
+        message: 'Pergunta inválida',
+      });
+    }
+
+    const question = rawQuestion.trim();
+
+    try {
+      const catalog =
+        await getDatabaseCatalog();
+
+      const queryableTables =
+        catalog.tables.filter(
+          table => table.queryable,
+        );
+
+      const selectedTableNames =
+        await selectRelevantTables(
+          question,
+          queryableTables.map(
+            table => table.name,
+          ),
+        );
+
+      const selectedNames = new Set(
+        selectedTableNames,
+      );
+
+      const databaseSchema =
+        queryableTables
+          .filter(table =>
+            selectedNames.has(table.name),
+          )
+          .map(table => {
+            const columns = table.columns
+              .filter(column =>
+                !protectedSchemaColumn.test(
+                  column.name,
+                ),
+              )
+              .map(column =>
+                `${column.name} ${column.dataType}`,
+              )
+              .join(', ');
+
+            return `${table.name}(${columns})`;
+          })
+          .join('\n');
+
+      const generated =
+        await generateDatabaseQuery(
+          question,
+          databaseSchema,
+        );
+
+      const result =
+        await executeSafeSelect(
+          generated.sql,
+        );
+
+      const answer =
+        await generateDatabaseAnswer(
+          question,
+          generated.explanation,
+          result.rows,
+        );
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        assistant: {
+          question,
+          answer,
+          explanation:
+            generated.explanation,
+          generatedSql:
+            generated.sql,
+          selectedTables:
+            selectedTableNames,
+        },
+        result,
+        timestamp:
+          new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.warn(
+        {
+          error,
+          question,
+        },
+        'Consulta do assistente recusada',
+      );
+
+      return reply.code(400).send({
+        status: 'error',
+        error: 'assistant_query_refused',
         message:
           error instanceof Error
             ? error.message
