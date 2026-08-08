@@ -3,6 +3,10 @@ import {
   type RowDataPacket,
 } from 'mysql2/promise';
 
+import {
+  validateSelectSql,
+} from './safe-sql-validator.js';
+
 
 const requiredEnvironmentVariable = (name: string): string => {
   const value = process.env[name];
@@ -276,6 +280,41 @@ export const countTableRecords = async (
     table: tableName,
     total: Number(result.total),
     sensitivity: table.sensitivity,
+  };
+};
+
+export const executeSafeSelect = async (
+  rawSql: unknown,
+) => {
+  const catalog = await getDatabaseCatalog();
+
+  const allowedTables = new Set(
+    catalog.tables
+      .filter(table =>
+        table.queryable &&
+        table.sensitivity === 'normal',
+      )
+      .map(table => table.name),
+  );
+
+  const validated = validateSelectSql(
+    rawSql,
+    {
+      allowedTables,
+      maximumRows: 20,
+    },
+  );
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    validated.sql,
+  );
+
+  return {
+    operation: 'safe_select',
+    tables: validated.tables,
+    rowCount: rows.length,
+    maximumRows: validated.limit,
+    rows,
   };
 };
 

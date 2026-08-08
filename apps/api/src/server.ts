@@ -10,6 +10,7 @@ import {
   getDatabaseCatalog,
   getDatabaseStatus,
   getDatabaseSummary,
+  executeSafeSelect,
 } from './database.js';
 
 import {
@@ -290,6 +291,47 @@ app.post<{
           error instanceof Error
             ? error.message
             : 'Pergunta não reconhecida',
+      });
+    }
+  },
+);
+
+interface SafeSelectBody {
+  sql?: unknown;
+}
+
+app.post<{
+  Body: SafeSelectBody;
+}>(
+  '/internal/database/select',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    try {
+      const result = await executeSafeSelect(
+        request.body?.sql,
+      );
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        result,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.warn(
+        { error },
+        'Consulta SQL segura recusada',
+      );
+
+      return reply.code(400).send({
+        status: 'error',
+        error: 'safe_query_refused',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Consulta recusada',
       });
     }
   },
