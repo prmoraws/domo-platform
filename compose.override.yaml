@@ -1,0 +1,9 @@
+services:
+  api:
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_PLANNER_MODEL: ${GEMINI_PLANNER_MODEL:-gemini-2.5-flash}
+      GEMINI_API_URL: ${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta}
+      DATABASE_QUERY_MAX_ROWS: ${DATABASE_QUERY_MAX_ROWS:-100}
+      OLLAMA_PLANNER_FALLBACK: ${OLLAMA_PLANNER_FALLBACK:-false}
