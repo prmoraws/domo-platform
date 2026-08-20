@@ -15,6 +15,7 @@ import {
 
 import {
   DatabaseAgentUnavailableError,
+  getGeminiCircuitStatus,
   runGeminiDatabaseAgent,
 } from './gemini-database-agent.js';
 
@@ -30,6 +31,14 @@ import {
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'request.headers.authorization',
+        'headers.authorization',
+      ],
+      censor: '[REDACTED]',
+    },
   },
 });
 
@@ -83,14 +92,16 @@ app.get('/', async () => {
   };
 });
 
-app.get('/health', async () => {
-  return {
+app.get(
+  '/health',
+  { logLevel: 'silent' },
+  async () => ({
     status: 'ok',
     service: 'domo-api',
     version: '0.1.0',
     timestamp: new Date().toISOString(),
-  };
-});
+  }),
+);
 
 app.get(
   '/internal/status',
@@ -105,6 +116,22 @@ app.get(
       timestamp: new Date().toISOString(),
     };
   },
+);
+
+app.get(
+  '/internal/assistant/status',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async () => ({
+    status: 'ok',
+    service: 'domo-api',
+    provider: 'gemini',
+    model:
+      process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    circuitBreaker: getGeminiCircuitStatus(),
+    timestamp: new Date().toISOString(),
+  }),
 );
 
 app.get(
@@ -384,6 +411,21 @@ app.post<{
         availableTables,
       );
 
+      request.log.info(
+        {
+          event: 'assistant_query_completed',
+          requestId: request.id,
+          provider: agent.provider,
+          model: agent.model,
+          durationMs: agent.durationMs,
+          modelRequests: agent.modelRequests,
+          iterations: agent.iterations,
+          toolCalls: agent.toolCalls,
+          successful: true,
+        },
+        'Consulta do assistente concluída',
+      );
+
       return {
         status: 'ok',
         service: 'domo-api',
@@ -405,11 +447,17 @@ app.post<{
     } catch (error) {
       request.log.warn(
         {
-          error,
+          event: 'assistant_query_failed',
+          requestId: request.id,
           errorCode:
             error instanceof DatabaseAgentUnavailableError
               ? error.code
               : 'AGENT_QUERY_REFUSED',
+          retryAfterSeconds:
+            error instanceof DatabaseAgentUnavailableError
+              ? error.retryAfterSeconds
+              : undefined,
+          successful: false,
         },
         'Consulta do assistente recusada',
       );

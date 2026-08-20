@@ -108,6 +108,18 @@ export class DatabaseAgentUnavailableError extends Error {
 
 let geminiBlockedUntil = 0;
 
+export const getGeminiCircuitStatus = () => {
+  const retryAfterSeconds = Math.max(
+    0,
+    Math.ceil((geminiBlockedUntil - Date.now()) / 1000),
+  );
+
+  return {
+    state: retryAfterSeconds > 0 ? 'open' : 'closed',
+    retryAfterSeconds,
+  } as const;
+};
+
 const configuredRateLimitCooldown = () => {
   const value = Number(
     process.env.GEMINI_RATE_LIMIT_COOLDOWN_SECONDS ?? 60,
