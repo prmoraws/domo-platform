@@ -14,10 +14,14 @@ import {
 } from './database.js';
 
 import {
-  generateDatabaseAnswer,
-  generateDatabaseQuery,
-  selectRelevantTables,
-} from './ollama.js';
+  DatabaseAgentUnavailableError,
+  runGeminiDatabaseAgent,
+} from './gemini-database-agent.js';
+
+import {
+  createDatabaseAgentTools,
+  getQueryableTableNames,
+} from './database-agent-tools.js';
 
 import {
   interpretDatabaseQuestion,
@@ -347,9 +351,6 @@ interface AssistantDatabaseQueryBody {
   question?: unknown;
 }
 
-const protectedSchemaColumn =
-  /^(password|senha|token|remember_token|secret|api_key)$/i;
-
 app.post<{
   Body: AssistantDatabaseQueryBody;
 }>(
@@ -376,79 +377,28 @@ app.post<{
     const question = rawQuestion.trim();
 
     try {
-      const catalog =
-        await getDatabaseCatalog();
-
-      const queryableTables =
-        catalog.tables.filter(
-          table => table.queryable,
-        );
-
-      const selectedTableNames =
-        await selectRelevantTables(
-          question,
-          queryableTables.map(
-            table => table.name,
-          ),
-        );
-
-      const selectedNames = new Set(
-        selectedTableNames,
+      const availableTables = await getQueryableTableNames();
+      const agent = await runGeminiDatabaseAgent(
+        question,
+        createDatabaseAgentTools(),
+        availableTables,
       );
-
-      const databaseSchema =
-        queryableTables
-          .filter(table =>
-            selectedNames.has(table.name),
-          )
-          .map(table => {
-            const columns = table.columns
-              .filter(column =>
-                !protectedSchemaColumn.test(
-                  column.name,
-                ),
-              )
-              .map(column =>
-                `${column.name} ${column.dataType}`,
-              )
-              .join(', ');
-
-            return `${table.name}(${columns})`;
-          })
-          .join('\n');
-
-      const generated =
-        await generateDatabaseQuery(
-          question,
-          databaseSchema,
-        );
-
-      const result =
-        await executeSafeSelect(
-          generated.sql,
-        );
-
-      const answer =
-        await generateDatabaseAnswer(
-          question,
-          generated.explanation,
-          result.rows,
-        );
 
       return {
         status: 'ok',
         service: 'domo-api',
         assistant: {
           question,
-          answer,
-          explanation:
-            generated.explanation,
-          generatedSql:
-            generated.sql,
-          selectedTables:
-            selectedTableNames,
+          answer: agent.answer,
+          provider: agent.provider,
+          model: agent.model,
+          iterations: agent.iterations,
+          modelRequests: agent.modelRequests,
+          durationMs: agent.durationMs,
+          toolCalls: agent.toolCalls,
+          generatedSql: agent.generatedSql,
         },
-        result,
+        result: agent.queryResult,
         timestamp:
           new Date().toISOString(),
       };
@@ -456,18 +406,37 @@ app.post<{
       request.log.warn(
         {
           error,
-          question,
+          errorCode:
+            error instanceof DatabaseAgentUnavailableError
+              ? error.code
+              : 'AGENT_QUERY_REFUSED',
         },
         'Consulta do assistente recusada',
       );
 
+      if (
+        error instanceof DatabaseAgentUnavailableError
+      ) {
+        return reply.code(200).send({
+          status: 'temporarily_unavailable',
+          service: 'domo-api',
+          retryable: true,
+          retryAfterSeconds: error.retryAfterSeconds,
+          assistant: {
+            question,
+            answer: [
+              'O serviço de consultas atingiu um limite temporário.',
+              'Por favor, tente novamente mais tarde.',
+            ].join(' '),
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       return reply.code(400).send({
         status: 'error',
         error: 'assistant_query_refused',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Consulta recusada',
+        message: 'Não foi possível concluir a consulta com segurança',
       });
     }
   },

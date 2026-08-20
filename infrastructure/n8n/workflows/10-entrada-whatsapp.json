@@ -1,1 +1,261 @@
-{"updatedAt":"2026-08-07T17:39:58.724Z","createdAt":"2026-08-07T02:05:01.592Z","id":"gseL5lW5viEgNEWQ","name":"DOMO - 10 - Entrada WhatsApp","description":null,"active":true,"isArchived":false,"nodes":[{"parameters":{"httpMethod":"POST","path":"domo-whatsapp-inbound","options":{"responseCode":{"values":{}}}},"type":"n8n-nodes-base.webhook","typeVersion":2.1,"position":[-1088,32],"id":"8a88dbd4-6f8c-4e59-8a35-cc2084150d02","name":"Webhook","webhookId":"c3b6efe6-5d98-463b-b69d-eb05fc6db953"},{"parameters":{"jsCode":"const input = $input.first().json;\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst message = data.message ?? {};\n\nreturn [{\n  json: {\n    event: body.event ?? '',\n    instance: body.instance ?? '',\n    remoteJid: data.key?.remoteJid ?? '',\n    fromMe: data.key?.fromMe === true,\n    messageId: data.key?.id ?? '',\n    text:\n      message.conversation ??\n      message.extendedTextMessage?.text ??\n      '',\n  },\n}];"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[-960,32],"id":"184470fb-b4e3-4492-b8a5-fbad934c2727","name":"Extrair comando"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"1e546664-6399-4d09-9d66-bd0dd2a40086","leftValue":"={{    $json.remoteJid === $env.DOMO_WHATSAPP_ALLOWED_JID &&   $json.instance === $env.DOMO_WHATSAPP_INSTANCE_NAME &&   $json.fromMe === true &&   $json.text.trim().toLowerCase().startsWith(     $env.DOMO_WHATSAPP_COMMAND_PREFIX.toLowerCase()   ) }}","rightValue":"","operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[-816,16],"id":"3b39cc9e-c7bc-4ca6-986a-32e5e1c1ebe8","name":"Autorizar comando"},{"parameters":{"assignments":{"assignments":[{"id":"4a4e4c42-4720-4b75-bcff-c4a53ec8144b","name":"question","value":"={{ $json.text.trim().slice($env.DOMO_WHATSAPP_COMMAND_PREFIX.length).trim() }}","type":"string"}]},"includeOtherFields":true,"options":{}},"type":"n8n-nodes-base.set","typeVersion":3.5,"position":[-672,-96],"id":"a2b4f686-96ac-4dc1-8fed-855c1c2b415f","name":"Preparar pergunta"},{"parameters":{"method":"POST","url":"={{ 'http://evolution:8080/message/sendText/' + $env.DOMO_WHATSAPP_INSTANCE_NAME }}","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendBody":true,"specifyBody":"json","jsonBody":"={\n  \"number\": \"={{ $('Extrair comando').item.json.remoteJid.split('@')[0] }}\",\n  \"text\": \"{{ 'DOMO informa: existem ' + $('Executar consulta segura').item.json.result.total + ' pessoas cadastradas.' }}\"\n}","options":{}},"type":"n8n-nodes-base.httpRequest","typeVersion":4.5,"position":[-224,-224],"id":"aeeec8c1-6131-4ff3-96b8-960a4b8c793d","name":"Responder teste","credentials":{"httpHeaderAuth":{"id":"HPpjiwrjOHi43obN","name":"DOMO - Evolution API"}}},{"parameters":{"jsCode":"const question = String($json.question ?? '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .trim()\n  .toLowerCase();\n\nlet table = null;\n\nif (\n  question.includes('pessoa') ||\n  question.includes('pessoas') ||\n  question.includes('cadastrado') ||\n  question.includes('cadastradas')\n) {\n  table = 'pessoas';\n}\n\nif (!table) {\n  throw new Error(\n    'Ainda não reconheço essa consulta.',\n  );\n}\n\nreturn [\n  {\n    json: {\n      ...$json,\n      operation: 'count_records',\n      table,\n    },\n  },\n];"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[-528,-128],"id":"be318859-b513-472c-ae31-8173f16ebc3a","name":"Interpretar consulta"},{"parameters":{"method":"POST","url":"http://api:3001/internal/database/query","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendBody":true,"specifyBody":"json","jsonBody":"={\n  \"operation\": \"{{ $json.operation }}\",\n  \"table\": \"{{ $json.table }}\"\n}","options":{}},"type":"n8n-nodes-base.httpRequest","typeVersion":4.5,"position":[-368,-192],"id":"bf537cb1-41ec-475b-b900-601cc08d6d97","name":"Executar consulta segura","credentials":{"httpHeaderAuth":{"id":"E8wfJ0ehPWLuEZ7p","name":"DOMO API Internal"}}}],"connections":{"Webhook":{"main":[[{"node":"Extrair comando","type":"main","index":0}]]},"Extrair comando":{"main":[[{"node":"Autorizar comando","type":"main","index":0}]]},"Autorizar comando":{"main":[[{"node":"Preparar pergunta","type":"main","index":0}]]},"Preparar pergunta":{"main":[[{"node":"Interpretar consulta","type":"main","index":0}]]},"Responder teste":{"main":[[]]},"Interpretar consulta":{"main":[[{"node":"Executar consulta segura","type":"main","index":0}]]},"Executar consulta segura":{"main":[[{"node":"Responder teste","type":"main","index":0}]]}},"settings":{"executionOrder":"v1","binaryMode":"separate","availableInMCP":false},"staticData":null,"meta":null,"nodeGroups":[],"pinData":{},"versionId":"052ad04c-2edd-485d-83de-5edcdfd86f5f","activeVersionId":"052ad04c-2edd-485d-83de-5edcdfd86f5f","versionCounter":78,"triggerCount":1,"sourceWorkflowId":null,"tags":[],"shared":[{"updatedAt":"2026-08-07T02:05:01.592Z","createdAt":"2026-08-07T02:05:01.592Z","role":"workflow:owner","workflowId":"gseL5lW5viEgNEWQ","projectId":"6WDuh2ZrzcGiSReo","project":{"updatedAt":"2026-08-05T20:13:58.285Z","createdAt":"2026-08-05T17:54:37.418Z","id":"6WDuh2ZrzcGiSReo","name":"Domo jinhadnt@gmail.com <jinhadnt@gmail.com>","type":"personal","icon":null,"description":null,"customTelemetryTags":[],"creatorId":"c3fe17bb-0993-4cd4-b5dd-ae6f1e40ee3c"}}],"versionMetadata":{"name":"Version 052ad04c","description":""}}
+{
+  "name": "DOMO - 10 - Entrada WhatsApp",
+  "description": "",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "domo-whatsapp-inbound",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1600,
+        -80
+      ],
+      "id": "8a88dbd4-6f8c-4e59-8a35-cc2084150d02",
+      "name": "Webhook",
+      "webhookId": "c3b6efe6-5d98-463b-b69d-eb05fc6db953"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst message = data.message ?? {};\nconst text = String(\n  message.conversation ??\n  message.extendedTextMessage?.text ??\n  ''\n).trim();\nconst instance = String(body.instance ?? '');\nconst remoteJid = String(data.key?.remoteJid ?? '');\nconst fromMe = data.key?.fromMe === true;\nconst authorizedSource =\n  remoteJid === $env.DOMO_WHATSAPP_ALLOWED_JID &&\n  instance === $env.DOMO_WHATSAPP_INSTANCE_NAME &&\n  fromMe;\nconst prefix = String(\n  $env.DOMO_WHATSAPP_COMMAND_PREFIX ?? 'domo:'\n).trim();\nconst configuredMinutes = Number(\n  $env.DOMO_WHATSAPP_SESSION_MINUTES ?? 20\n);\nconst sessionMinutes =\n  Number.isInteger(configuredMinutes) &&\n  configuredMinutes >= 5 &&\n  configuredMinutes <= 120\n    ? configuredMinutes\n    : 20;\nconst now = Date.now();\nconst state = $getWorkflowStaticData('global');\nstate.sessions ??= {};\n\nfor (const [key, session] of Object.entries(state.sessions)) {\n  if (!session?.expiresAt || session.expiresAt <= now) {\n    delete state.sessions[key];\n  }\n}\n\nconst sessionKey = `${instance}:${remoteJid}`;\nconst active = state.sessions[sessionKey]?.expiresAt > now;\nconst hasPrefix = text.toLocaleLowerCase('pt-BR').startsWith(\n  prefix.toLocaleLowerCase('pt-BR')\n);\nconst command = hasPrefix\n  ? text.slice(prefix.length).trim()\n  : text;\nconst normalized = command.toLocaleLowerCase('pt-BR');\nlet authorized = false;\nlet shouldQuery = false;\nlet question = '';\nlet replyText = '';\n\nif (authorizedSource && text) {\n  if (hasPrefix && ['sair', 'encerrar', 'fim'].includes(normalized)) {\n    delete state.sessions[sessionKey];\n    authorized = true;\n    replyText = 'Sessão DOMO encerrada com segurança.';\n  } else if (hasPrefix && !command) {\n    state.sessions[sessionKey] = {\n      expiresAt: now + sessionMinutes * 60_000,\n    };\n    authorized = true;\n    replyText = `Sessão DOMO iniciada por ${sessionMinutes} minutos. Envie sua pergunta ou use \"${prefix} sair\" para encerrar.`;\n  } else if (hasPrefix || active) {\n    state.sessions[sessionKey] = {\n      expiresAt: now + sessionMinutes * 60_000,\n    };\n    authorized = true;\n    shouldQuery = true;\n    question = command;\n  }\n}\n\nreturn [{ json: {\n  authorized,\n  shouldQuery,\n  question,\n  replyText,\n  instance,\n  remoteJid,\n  messageId: data.key?.id ?? '',\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        -80
+      ],
+      "id": "184470fb-b4e3-4492-b8a5-fbad934c2727",
+      "name": "Gerenciar sessão"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1e546664-6399-4d09-9d66-bd0dd2a40086",
+              "leftValue": "={{ $json.authorized === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1296,
+        -80
+      ],
+      "id": "3b39cc9e-c7bc-4ca6-986a-32e5e1c1ebe8",
+      "name": "Autorizar origem"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4a4e4c42-4720-4b75-bcff-c4a53ec8144b",
+              "leftValue": "={{ $json.shouldQuery === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1136,
+        -80
+      ],
+      "id": "a2b4f686-96ac-4dc1-8fed-855c1c2b415f",
+      "name": "Executar consulta?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/assistant/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "options": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ { question: $('Gerenciar sessão').item.json.question } }}"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -960,
+        -160
+      ],
+      "id": "4bd0d762-4617-4e51-993e-b221104c07ea",
+      "name": "Consultar agente local",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "E8wfJ0ehPWLuEZ7p",
+          "name": "DOMO API Internal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst context = $('Gerenciar sessão').item.json;\nconst rawAnswer = String(\n  input.assistant?.answer ??\n  input.replyText ??\n  'Não foi possível concluir a consulta agora.'\n).replace(/\\s*\\n+\\s*/g, ' ').trim();\nconst limit = 3500;\nconst answer = rawAnswer.length > limit\n  ? rawAnswer.slice(0, limit - 80).trimEnd() +\n    '…\\n\\nResposta limitada para envio seguro pelo WhatsApp.'\n  : rawAnswer;\n\nreturn [{ json: {\n  number: String(context.remoteJid).split('@')[0],\n  text: answer,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -80
+      ],
+      "id": "92411a25-0600-4ee2-8e57-85a0cad00100",
+      "name": "Preparar resposta"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://evolution:8080/message/sendText/' + $env.DOMO_WHATSAPP_INSTANCE_NAME }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $json.number, text: $json.text } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -560,
+        -80
+      ],
+      "id": "aeeec8c1-6131-4ff3-96b8-960a4b8c793d",
+      "name": "Responder WhatsApp",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HPpjiwrjOHi43obN",
+          "name": "DOMO - Evolution API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Gerenciar sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerenciar sessão": {
+      "main": [
+        [
+          {
+            "node": "Autorizar origem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autorizar origem": {
+      "main": [
+        [
+          {
+            "node": "Executar consulta?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Executar consulta?": {
+      "main": [
+        [
+          {
+            "node": "Consultar agente local",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar agente local": {
+      "main": [
+        [
+          {
+            "node": "Preparar resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar resposta": {
+      "main": [
+        [
+          {
+            "node": "Responder WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder WhatsApp": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": []
+}

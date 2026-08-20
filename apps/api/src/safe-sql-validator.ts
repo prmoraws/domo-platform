@@ -98,9 +98,11 @@ for (
 
   const maximumRows = options.maximumRows ?? 20;
   const limitMatch = sql.match(/\blimit\s+(\d+)\s*$/i);
+  let effectiveLimit = maximumRows;
 
   if (limitMatch) {
     const requestedLimit = Number(limitMatch[1]);
+    effectiveLimit = Math.min(requestedLimit, maximumRows);
 
     if (requestedLimit > maximumRows) {
       sql = sql.replace(
@@ -115,6 +117,6 @@ for (
   return {
     sql,
     tables: uniqueTables,
-    limit: maximumRows,
+    limit: effectiveLimit,
   };
 };

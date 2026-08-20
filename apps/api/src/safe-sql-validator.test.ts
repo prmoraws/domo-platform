@@ -37,6 +37,16 @@ test('reduz LIMIT acima do permitido', () => {
     result.sql,
     'SELECT nome FROM igrejas LIMIT 10',
   );
+  assert.equal(result.limit, 10);
+});
+
+test('informa o LIMIT efetivo solicitado', () => {
+  const result = validateSelectSql(
+    'SELECT nome FROM igrejas LIMIT 5',
+    { allowedTables, maximumRows: 100 },
+  );
+
+  assert.equal(result.limit, 5);
 });
 
 test('aceita JOIN entre tabelas autorizadas', () => {

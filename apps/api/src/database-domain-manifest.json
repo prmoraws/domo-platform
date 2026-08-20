@@ -1,0 +1,240 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-08-19",
+  "purpose": "Complementar o catálogo dinâmico do MariaDB com semântica confirmada no projeto Laravel, sem substituir information_schema.",
+  "source": {
+    "project": "dm-main",
+    "role": "fonte de conhecimento somente leitura",
+    "counts": {
+      "migrations": 64,
+      "models": 54,
+      "livewireComponents": 61
+    },
+    "authorityOrder": [
+      "MariaDB information_schema do slot ativo",
+      "foreign keys e tipos reais do MariaDB",
+      "models, casts e relacionamentos Eloquent",
+      "migrations Laravel",
+      "aliases deste manifesto"
+    ]
+  },
+  "rules": {
+    "dynamicCatalogRequired": true,
+    "neverInventTablesOrColumns": true,
+    "resolveNamedEntitiesBeforeFiltering": true,
+    "requireDisambiguationForMultipleMatches": true,
+    "readonlyQueriesOnly": true,
+    "neverUseSelectStar": true,
+    "finalAnswerMustUseSuccessfulQueryResult": true
+  },
+  "aliases": {
+    "região": "regiaos",
+    "regiões": "regiaos",
+    "igreja": "igrejas",
+    "pessoa": "pessoas",
+    "bloco": "blocos",
+    "cargo": "cargos",
+    "grupo": "grupos",
+    "presídio": "presidios",
+    "presídios": "presidios",
+    "pastor unp": "pastor_unps"
+  },
+  "nonQueryableTables": [
+    "cache",
+    "cache_locks",
+    "failed_jobs",
+    "jobs",
+    "job_batches",
+    "migrations",
+    "password_reset_tokens",
+    "personal_access_tokens",
+    "sessions"
+  ],
+  "protectedCredentialColumns": [
+    "password_reset_tokens.token",
+    "personal_access_tokens.tokenable_type",
+    "personal_access_tokens.tokenable_id",
+    "personal_access_tokens.token",
+    "users.password",
+    "users.remember_token"
+  ],
+  "tables": {
+    "pessoas": {
+      "entity": "pessoa",
+      "nameColumn": "nome",
+      "description": "Cadastro operacional de pessoas da Universal/UNP.",
+      "relationships": {
+        "bloco_id": "blocos.id",
+        "regiao_id": "regiaos.id",
+        "igreja_id": "igrejas.id",
+        "categoria_id": "categorias.id",
+        "cargo_id": "cargos.id",
+        "grupo_id": "grupos.id",
+        "cidade_id": "cidades.id",
+        "estado_id": "estados.id"
+      },
+      "fieldSemantics": {
+        "conversao": "date",
+        "obra": "date",
+        "trabalho": "json-array",
+        "batismo": "json-array",
+        "preso": "json-array",
+        "foto": "photo-path",
+        "assinatura": "signature-path",
+        "celular": "phone",
+        "telefone": "phone",
+        "email": "personal-email",
+        "cep": "postal-code"
+      },
+      "queryGuidance": [
+        "Quando houver nome de pessoa, filtre primeiro pessoas.nome.",
+        "Termos batismo, preso e trabalho são campos JSON da própria pessoa; não inferir tabelas homônimas.",
+        "Relações solicitadas devem partir da pessoa encontrada e usar a chave estrangeira correspondente."
+      ]
+    },
+    "blocos": {
+      "entity": "bloco",
+      "nameColumn": "nome",
+      "description": "Divisão organizacional que agrupa regiões, igrejas, pessoas e instrutores."
+    },
+    "regiaos": {
+      "entity": "região",
+      "nameColumn": "nome",
+      "relationships": {
+        "bloco_id": "blocos.id"
+      },
+      "description": "Tabela legada grafada regiaos; pertence a um bloco."
+    },
+    "igrejas": {
+      "entity": "igreja",
+      "nameColumn": "nome",
+      "relationships": {
+        "bloco_id": "blocos.id",
+        "regiao_id": "regiaos.id",
+        "tipo_id": "tipos.id",
+        "cidade_id": "politica_cidades.id"
+      },
+      "description": "Igrejas ligadas diretamente a bloco e região; tipo_id e cidade_id dependem da existência real no catálogo atual."
+    },
+    "pastor_unps": {
+      "entity": "pastor UNP",
+      "nameColumn": "nome",
+      "relationships": {
+        "bloco_id": "blocos.id",
+        "regiao_id": "regiaos.id"
+      },
+      "fieldSemantics": {
+        "nascimento": "date",
+        "entrada": "date",
+        "preso": "boolean",
+        "consagrada_esposa": "boolean",
+        "preso_esposa": "boolean",
+        "trabalho": "json-array",
+        "trabalho_esposa": "json-array",
+        "cargo": "enum:responsavel|auxiliar",
+        "whatsapp": "phone",
+        "telefone": "phone"
+      },
+      "queryGuidance": [
+        "Perguntas sobre o pastor ou responsável de um bloco devem resolver o bloco e consultar pastor_unps.bloco_id.",
+        "cargo diferencia responsável e auxiliar."
+      ]
+    },
+    "cargos": {
+      "entity": "cargo",
+      "nameColumn": "nome",
+      "description": "Cargo exercido por uma pessoa; usar com pessoas.cargo_id em perguntas sobre liderança."
+    },
+    "grupos": {
+      "entity": "grupo",
+      "nameColumn": "nome",
+      "description": "Grupo associado à pessoa por pessoas.grupo_id."
+    },
+    "presidios": {
+      "entity": "presídio",
+      "nameColumn": "nome",
+      "fieldSemantics": {
+        "diretor": "person-name",
+        "contato_diretor": "phone-or-contact",
+        "adjunto": "person-name",
+        "contato_adjunto": "phone-or-contact",
+        "laborativa": "person-name-or-department",
+        "contato_laborativa": "phone-or-contact",
+        "visita": "free-text-schedule",
+        "interno": "free-text"
+      },
+      "queryGuidance": [
+        "Resolva a unidade por presidios.nome antes de consultar diretor ou visita.",
+        "Se várias unidades forem compatíveis, apresente as opções ou peça desambiguação."
+      ]
+    },
+    "cursos": {
+      "entity": "curso",
+      "relationships": {
+        "presidio_id": "presidios.id",
+        "instrutor_id": "instrutores.id"
+      }
+    },
+    "formaturas": {
+      "entity": "formatura",
+      "relationships": {
+        "presidio_id": "presidios.id",
+        "curso_id": "cursos.id",
+        "instrutor_id": "instrutores.id"
+      }
+    },
+    "batismos": {
+      "entity": "batismo coletivo em presídio",
+      "relationships": {
+        "bloco_id": "blocos.id",
+        "presidio_id": "presidios.id"
+      },
+      "fieldSemantics": {
+        "data_batismo": "date",
+        "quantidade": "non-negative-integer"
+      },
+      "queryGuidance": [
+        "Não confundir esta tabela com pessoas.batismo, que é um campo JSON individual."
+      ]
+    }
+  },
+  "confirmedRelationships": [
+    "pessoas.bloco_id -> blocos.id",
+    "pessoas.regiao_id -> regiaos.id",
+    "pessoas.igreja_id -> igrejas.id",
+    "pessoas.categoria_id -> categorias.id",
+    "pessoas.cargo_id -> cargos.id",
+    "pessoas.grupo_id -> grupos.id",
+    "pessoas.cidade_id -> cidades.id",
+    "pessoas.estado_id -> estados.id",
+    "regiaos.bloco_id -> blocos.id",
+    "igrejas.bloco_id -> blocos.id",
+    "igrejas.regiao_id -> regiaos.id",
+    "pastor_unps.bloco_id -> blocos.id",
+    "pastor_unps.regiao_id -> regiaos.id",
+    "cursos.presidio_id -> presidios.id",
+    "cursos.instrutor_id -> instrutores.id",
+    "formaturas.presidio_id -> presidios.id",
+    "formaturas.curso_id -> cursos.id",
+    "formaturas.instrutor_id -> instrutores.id",
+    "batismos.bloco_id -> blocos.id",
+    "batismos.presidio_id -> presidios.id"
+  ],
+  "sourceDiscrepancies": [
+    {
+      "severity": "high",
+      "source": "database/migrations/2026_07_09_130424_create_bloco_presidio_table.php",
+      "finding": "O nome do arquivo indica bloco_presidio, mas a migration cria batismos. A relação many-to-many Bloco-Presidio só pode ser usada se a tabela bloco_presidio existir no MariaDB real."
+    },
+    {
+      "severity": "medium",
+      "source": "igrejas",
+      "finding": "O model declara tipo_id e uma migration posterior adiciona cidade_id; ambos devem ser confirmados no catálogo ativo antes de consultar."
+    },
+    {
+      "severity": "medium",
+      "source": "pastor_unps.casado",
+      "finding": "A coluna foi criada como string e deliberadamente não possui cast booleano."
+    }
+  ]
+}

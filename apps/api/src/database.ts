@@ -286,6 +286,17 @@ export const countTableRecords = async (
 export const executeSafeSelect = async (
   rawSql: unknown,
 ) => {
+  const configuredMaximumRows = Number(
+    process.env.DATABASE_QUERY_MAX_ROWS ?? 100,
+  );
+
+  const maximumRows =
+    Number.isInteger(configuredMaximumRows) &&
+    configuredMaximumRows >= 1 &&
+    configuredMaximumRows <= 500
+      ? configuredMaximumRows
+      : 100;
+
   const catalog = await getDatabaseCatalog();
 
   const allowedTables = new Set(
@@ -298,7 +309,7 @@ export const executeSafeSelect = async (
     rawSql,
     {
       allowedTables,
-      maximumRows: 20,
+      maximumRows,
       blockedColumns: new Set([
         'password',
         'remember_token',
@@ -316,8 +327,151 @@ export const executeSafeSelect = async (
     tables: validated.tables,
     rowCount: rows.length,
     maximumRows: validated.limit,
+    possiblyTruncated:
+      rows.length === validated.limit &&
+      !/\b(count|sum|avg|min|max)\s*\(/i.test(validated.sql),
     rows,
   };
+};
+
+interface DatabaseRelationshipRow extends RowDataPacket {
+  tableName: string;
+  columnName: string;
+  referencedTableName: string;
+  referencedColumnName: string;
+}
+
+export interface DatabaseRelationship {
+  table: string;
+  column: string;
+  referencedTable: string;
+  referencedColumn: string;
+}
+
+export const getDatabaseRelationships = async (
+): Promise<DatabaseRelationship[]> => {
+  const [rows] =
+    await pool.query<DatabaseRelationshipRow[]>(`
+      SELECT
+        table_name AS tableName,
+        column_name AS columnName,
+        referenced_table_name AS referencedTableName,
+        referenced_column_name AS referencedColumnName
+      FROM information_schema.key_column_usage
+      WHERE table_schema = DATABASE()
+        AND referenced_table_name IS NOT NULL
+        AND referenced_column_name IS NOT NULL
+      ORDER BY
+        table_name,
+        column_name
+    `);
+
+  return rows.map(row => ({
+    table: row.tableName,
+    column: row.columnName,
+    referencedTable:
+      row.referencedTableName,
+    referencedColumn:
+      row.referencedColumnName,
+  }));
+};
+
+interface NamedEntityRow extends RowDataPacket {
+  id: number | string;
+  name: string;
+}
+
+export interface ResolvedNamedEntity {
+  searchedValue: string;
+  table: string;
+  id: number | string;
+  name: string;
+  exact: boolean;
+}
+
+export const resolveNamedEntities = async (
+  searchedValues: readonly string[],
+  candidateTables: readonly string[],
+): Promise<ResolvedNamedEntity[]> => {
+  const catalog = await getDatabaseCatalog();
+
+  const allowedTables = new Set(
+    catalog.tables
+      .filter(table =>
+        table.queryable &&
+        table.columns.some(column => column.name === 'id') &&
+        table.columns.some(column => column.name === 'nome'),
+      )
+      .map(table => table.name),
+  );
+
+  const safeTables = [
+    ...new Set(candidateTables),
+  ].filter(table =>
+    /^[a-z0-9_]+$/.test(table) &&
+    allowedTables.has(table),
+  );
+
+  const safeValues = [
+    ...new Set(
+      searchedValues
+        .map(value => value.trim())
+        .filter(value =>
+          value.length >= 2 &&
+          value.length <= 150 &&
+          !/^\$\d+$/.test(value),
+        ),
+    ),
+  ];
+
+  const matches: ResolvedNamedEntity[] = [];
+
+  const escapeLikePattern = (value: string) =>
+    value.replace(/[\\%_]/g, character => `\\${character}`);
+
+  for (const searchedValue of safeValues) {
+    for (const table of safeTables) {
+      const [rows] = await pool.query<NamedEntityRow[]>(
+        `
+          SELECT
+            id,
+            nome AS name
+          FROM \`${table}\`
+          WHERE LOWER(nome) = LOWER(?)
+             OR nome LIKE ? ESCAPE '\\\\'
+          ORDER BY
+            CASE
+              WHEN LOWER(nome) = LOWER(?) THEN 0
+              ELSE 1
+            END,
+            nome
+          LIMIT 5
+        `,
+        [
+          searchedValue,
+          `%${escapeLikePattern(searchedValue)}%`,
+          searchedValue,
+        ],
+      );
+
+      for (const row of rows) {
+        matches.push({
+          searchedValue,
+          table,
+          id: row.id,
+          name: row.name,
+          exact:
+            row.name.localeCompare(
+              searchedValue,
+              'pt-BR',
+              { sensitivity: 'base' },
+            ) === 0,
+        });
+      }
+    }
+  }
+
+  return matches;
 };
 
 export const closeDatabase = async (): Promise<void> => {
