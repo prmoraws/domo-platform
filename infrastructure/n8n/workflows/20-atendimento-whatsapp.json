@@ -1,0 +1,223 @@
+{
+  "name": "DOMO - 20 - Atendimento WhatsApp",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1600,
+        -80
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "domo-atendimento-inbound",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "webhookId": "5a44db51-36ba-440d-878b-fb01678a921b"
+    },
+    {
+      "name": "Preparar atendimento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1420,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\nconst input = $input.first().json;\nconst body = input.body ?? input;\nconst data = body.data ?? {};\nconst key = data.key ?? {};\nconst message = data.message ?? {};\n\nconst instance = String(body.instance ?? '');\nconst remoteJid = String(key.remoteJid ?? '');\nconst fromMe = key.fromMe === true;\nconst isGroup = remoteJid.endsWith('@g.us');\n\nconst text = String(\n  message.conversation ??\n  message.extendedTextMessage?.text ??\n  ''\n).trim();\n\nlet messageType = 'other';\n\nif (text) {\n  messageType = 'text';\n} else if (\n  message.audioMessage ||\n  message.pttMessage\n) {\n  messageType = 'audio';\n} else if (message.imageMessage) {\n  messageType = 'image';\n} else if (message.videoMessage) {\n  messageType = 'video';\n} else if (message.documentMessage) {\n  messageType = 'document';\n} else if (message.stickerMessage) {\n  messageType = 'sticker';\n}\n\nconst expectedInstance = 'domo-atendimento';\nconst TIME_ZONE = 'America/Bahia';\n\nconst formatter = new Intl.DateTimeFormat(\n  'en-CA',\n  {\n    timeZone: TIME_ZONE,\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n    weekday: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n    hourCycle: 'h23',\n  }\n);\n\nconst parts = Object.fromEntries(\n  formatter\n    .formatToParts(new Date())\n    .filter((part) => part.type !== 'literal')\n    .map((part) => [part.type, part.value])\n);\n\nconst localDate =\n  `${parts.year}-${parts.month}-${parts.day}`;\n\nconst localHour = Number(parts.hour);\nconst localMinute = Number(parts.minute);\n\nconst easterSunday = year => {\n  const a = year % 19;\n  const b = Math.floor(year / 100);\n  const c = year % 100;\n  const d = Math.floor(b / 4);\n  const e = b % 4;\n  const f = Math.floor((b + 8) / 25);\n  const g = Math.floor((b - f + 1) / 3);\n  const h = (19 * a + b - d - g + 15) % 30;\n  const i = Math.floor(c / 4);\n  const k = c % 4;\n  const l =\n    (32 + 2 * e + 2 * i - h - k) % 7;\n  const m =\n    Math.floor((a + 11 * h + 22 * l) / 451);\n\n  const month =\n    Math.floor((h + l - 7 * m + 114) / 31);\n\n  const day =\n    ((h + l - 7 * m + 114) % 31) + 1;\n\n  return new Date(\n    Date.UTC(year, month - 1, day, 12, 0, 0)\n  );\n};\n\nconst formatBahiaDate = date => {\n  const p = Object.fromEntries(\n    formatter\n      .formatToParts(date)\n      .filter(part => part.type !== 'literal')\n      .map(part => [part.type, part.value])\n  );\n\n  return `${p.year}-${p.month}-${p.day}`;\n};\n\nconst addDays = (date, days) =>\n  new Date(\n    date.getTime() + days * 86400000\n  );\n\nconst year = Number(parts.year);\nconst easter = easterSunday(year);\n\nconst goodFriday =\n  formatBahiaDate(addDays(easter, -2));\n\nconst corpusChristi =\n  formatBahiaDate(addDays(easter, 60));\n\nconst holidays = new Set([\n  `${parts.year}-01-01`,\n  goodFriday,\n  `${parts.year}-04-21`,\n  `${parts.year}-05-01`,\n  corpusChristi,\n\n  // Salvador\n  `${parts.year}-06-24`,\n\n  // Bahia\n  `${parts.year}-07-02`,\n\n  `${parts.year}-09-07`,\n  `${parts.year}-10-12`,\n  `${parts.year}-11-02`,\n  `${parts.year}-11-15`,\n  `${parts.year}-11-20`,\n\n  // Salvador\n  `${parts.year}-12-08`,\n\n  `${parts.year}-12-25`,\n]);\n\nconst isHoliday = holidays.has(localDate);\n\nconst isWeekend =\n  parts.weekday === 'Sat' ||\n  parts.weekday === 'Sun';\n\nconst isProgramWindow =\n  !isWeekend &&\n  !isHoliday &&\n  localHour === 21;\n\nconst correctInstance =\n  instance === expectedInstance;\n\nconst state =\n  $getWorkflowStaticData('global');\n\nstate.customerSessions ??= {};\nstate.processedMessages ??= {};\n\nconst messageId = String(key.id ?? '');\nconst dedupKey =\n  `${instance}:${messageId}`;\n\nconst nowMs = Date.now();\nconst DEDUP_TTL_MS = 15 * 60 * 1000;\n\nfor (const [id, timestamp] of Object.entries(\n  state.processedMessages\n)) {\n  if (\n    typeof timestamp !== 'number' ||\n    nowMs - timestamp > DEDUP_TTL_MS\n  ) {\n    delete state.processedMessages[id];\n  }\n}\n\nconst duplicated =\n  Boolean(\n    messageId &&\n    state.processedMessages[dedupKey]\n  );\n\nif (\n  correctInstance &&\n  messageId &&\n  !duplicated\n) {\n  state.processedMessages[dedupKey] =\n    nowMs;\n}\n\nconst shouldRespond =\n  correctInstance &&\n  !duplicated &&\n  !fromMe &&\n  !isGroup &&\n  messageType === 'text' &&\n  text.length > 0 &&\n  !isProgramWindow;\n\nconst sessionKey =\n  `${instance}:${remoteJid}`;\n\nconst SESSION_MINUTES = 30;\nconst ttl =\n  SESSION_MINUTES * 60 * 1000;\n\nconst current =\n  state.customerSessions[sessionKey];\n\nconst hasActiveSession =\n  Boolean(\n    current?.lastSeen &&\n    Date.now() - current.lastSeen < ttl\n  );\n\nconst firstInteraction =\n  !hasActiveSession;\n\nconst history =\n  Array.isArray(current?.history)\n    ? current.history.slice(-10)\n    : [];\n\nif (shouldRespond) {\n  state.customerSessions[sessionKey] = {\n    lastSeen: Date.now(),\n    history,\n  };\n}\n\nreturn [{\n  json: {\n    shouldRespond,\n\n    reason:\n      !correctInstance\n        ? 'wrong_instance'\n        : duplicated\n          ? 'duplicate'\n          : fromMe\n          ? 'from_me'\n          : isGroup\n            ? 'group'\n            : messageType !== 'text'\n              ? 'non_text'\n              : isProgramWindow\n                ? 'live_program'\n                : 'text_allowed',\n\n    instance,\n    remoteJid,\n    number: remoteJid.split('@')[0],\n    messageId,\n    duplicated,\n\n    messageType,\n    text,\n    firstInteraction,\n    history,\n\n    isHoliday,\n    isWeekend,\n    isProgramWindow,\n\n    localDate,\n    localTime:\n      String(localHour).padStart(2, '0') +\n      ':' +\n      String(localMinute).padStart(2, '0'),\n  }\n}];\n"
+      }
+    },
+    {
+      "name": "Responder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1220,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "domo-atendimento-responder",
+              "leftValue": "={{ $json.shouldRespond === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Consultar atendimento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -1010,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/customer-service/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "options": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: $('Preparar atendimento').item.json.text, firstInteraction: $('Preparar atendimento').item.json.firstInteraction, isHoliday: $('Preparar atendimento').item.json.isHoliday, localDate: $('Preparar atendimento').item.json.localDate, localTime: $('Preparar atendimento').item.json.localTime, history: $('Preparar atendimento').item.json.history } }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "E8wfJ0ehPWLuEZ7p",
+          "name": "DOMO API Internal"
+        }
+      }
+    },
+    {
+      "name": "Registrar contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst response = $input.first().json;\nconst context =\n  $('Preparar atendimento').item.json;\n\nconst answer = String(\n  response.assistant?.answer ?? ''\n).trim();\n\nif (!answer) {\n  return [];\n}\n\nconst state =\n  $getWorkflowStaticData('global');\n\nstate.customerSessions ??= {};\n\nconst sessionKey =\n  `${context.instance}:${context.remoteJid}`;\n\nconst current =\n  state.customerSessions[sessionKey] ?? {\n    history: [],\n  };\n\nconst history =\n  Array.isArray(current.history)\n    ? current.history\n    : [];\n\nhistory.push({\n  role: 'user',\n  text: String(context.text).slice(0, 2000),\n});\n\nhistory.push({\n  role: 'assistant',\n  text: answer.slice(0, 2000),\n});\n\nstate.customerSessions[sessionKey] = {\n  lastSeen: Date.now(),\n  history: history.slice(-10),\n};\n\nreturn [{\n  json: {\n    number: context.number,\n    text: answer,\n  }\n}];\n"
+      }
+    },
+    {
+      "name": "Preparar resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -610,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst input = $input.first().json;\n\nconst raw = String(\n  input.text ?? ''\n)\n  .replace(/\\\\s*\\\\n+\\\\s*/g, '\\\\n')\n  .trim();\n\nif (!raw) {\n  return [];\n}\n\nconst limit = 3500;\n\nconst text =\n  raw.length > limit\n    ? raw.slice(0, limit - 80).trimEnd() +\n      '…\\\\n\\\\nResposta limitada para envio seguro pelo WhatsApp.'\n    : raw;\n\nreturn [{\n  json: {\n    number: input.number,\n    text,\n  }\n}];\n"
+      }
+    },
+    {
+      "name": "Responder WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -410,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution:8080/message/sendText/domo-atendimento",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $json.number, text: $json.text } }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HPpjiwrjOHi43obN",
+          "name": "DOMO - Evolution API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Preparar atendimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar atendimento": {
+      "main": [
+        [
+          {
+            "node": "Responder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder?": {
+      "main": [
+        [
+          {
+            "node": "Consultar atendimento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Consultar atendimento": {
+      "main": [
+        [
+          {
+            "node": "Registrar contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar contexto": {
+      "main": [
+        [
+          {
+            "node": "Preparar resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar resposta": {
+      "main": [
+        [
+          {
+            "node": "Responder WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder WhatsApp": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "active": false
+}

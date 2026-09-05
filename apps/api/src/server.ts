@@ -20,6 +20,11 @@ import {
 } from './gemini-database-agent.js';
 
 import {
+  runCustomerServiceAgent,
+  type CustomerServiceHistoryItem,
+} from './customer-service-agent.js';
+
+import {
   createDatabaseAgentTools,
   getQueryableTableNames,
 } from './database-agent-tools.js';
@@ -369,6 +374,144 @@ app.post<{
           error instanceof Error
             ? error.message
             : 'Consulta recusada',
+      });
+    }
+  },
+);
+
+
+interface CustomerServiceQueryBody {
+  message?: unknown;
+  firstInteraction?: unknown;
+  isHoliday?: unknown;
+  localDate?: unknown;
+  localTime?: unknown;
+  history?: unknown;
+}
+
+app.post<{
+  Body: CustomerServiceQueryBody;
+}>(
+  '/internal/customer-service/query',
+  {
+    preHandler: requireInternalAuthentication,
+  },
+  async (request, reply) => {
+    const rawMessage = request.body?.message;
+
+    if (
+      typeof rawMessage !== 'string' ||
+      rawMessage.trim().length < 1 ||
+      rawMessage.length > 2000
+    ) {
+      return reply.code(400).send({
+        status: 'error',
+        error: 'invalid_message',
+        message: 'Mensagem inválida',
+      });
+    }
+
+    const rawHistory = request.body?.history;
+
+    let history: CustomerServiceHistoryItem[] = [];
+
+    if (Array.isArray(rawHistory)) {
+      history = rawHistory
+        .slice(-10)
+        .filter((item): item is {
+          role: 'user' | 'assistant';
+          text: string;
+        } => (
+          typeof item === 'object' &&
+          item !== null &&
+          (
+            (item as { role?: unknown }).role === 'user' ||
+            (item as { role?: unknown }).role === 'assistant'
+          ) &&
+          typeof (item as { text?: unknown }).text === 'string'
+        ))
+        .map((item) => ({
+          role: item.role,
+          text: item.text.slice(0, 2000),
+        }));
+    }
+
+    try {
+      const customerServiceInput = {
+        message: rawMessage.trim(),
+        firstInteraction:
+          request.body?.firstInteraction === true,
+        isHoliday:
+          request.body?.isHoliday === true,
+        history,
+        ...(typeof request.body?.localDate === 'string'
+          ? {
+              localDate:
+                request.body.localDate.slice(0, 10),
+            }
+          : {}),
+        ...(typeof request.body?.localTime === 'string'
+          ? {
+              localTime:
+                request.body.localTime.slice(0, 5),
+            }
+          : {}),
+      };
+
+      const agent = await runCustomerServiceAgent(
+        customerServiceInput,
+      );
+
+      request.log.info(
+        {
+          event: 'customer_service_query_completed',
+          requestId: request.id,
+          provider: agent.provider,
+          model: agent.model,
+          durationMs: agent.durationMs,
+          successful: true,
+        },
+        'Atendimento virtual concluído',
+      );
+
+      return {
+        status: 'ok',
+        service: 'domo-api',
+        assistant: {
+          answer: agent.answer,
+          provider: agent.provider,
+          model: agent.model,
+          durationMs: agent.durationMs,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      request.log.warn(
+        {
+          event: 'customer_service_query_failed',
+          requestId: request.id,
+          successful: false,
+        },
+        'Atendimento virtual indisponível',
+      );
+
+      return reply.code(200).send({
+        status: 'temporarily_unavailable',
+        service: 'domo-api',
+        retryable: true,
+        assistant: {
+          answer: [
+            'No momento não consegui concluir essa orientação.',
+            'Por favor, tente novamente em alguns minutos.',
+            'Se precisar de atendimento espiritual,',
+            'você também pode falar com um pastor pelo telefone',
+            '(71) 3432-9119.',
+          ].join(' '),
+          provider: 'fallback',
+          model: 'customer-service-fallback',
+          durationMs: 0,
+        },
+        timestamp: new Date().toISOString(),
       });
     }
   },

@@ -1,0 +1,283 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  resolveCustomerServiceRule,
+} from './customer-service-rules.js';
+
+test('orienta envio de áudio', () => {
+  const result = resolveCustomerServiceRule({
+    message:
+      'Quero mandar uma mensagem para meu filho que está preso',
+  });
+
+  assert.equal(result.matched, true);
+  assert.equal(result.rule, 'send_audio');
+  assert.match(result.answer ?? '', /20 segundos/);
+  assert.match(result.answer ?? '', /21h e 22h/);
+});
+
+test('orienta sobre conteúdo somente quando perguntado', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'O que eu falo no áudio?',
+  });
+
+  assert.equal(result.rule, 'audio_content');
+  assert.match(
+    result.answer ?? '',
+    /carinho e conforto/,
+  );
+});
+
+test('informa telefone correto para participação ao vivo', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Quero participar ao vivo do programa',
+  });
+
+  assert.equal(result.rule, 'live_program');
+  assert.match(
+    result.answer ?? '',
+    /\(71\) 3432-9110/,
+  );
+});
+
+test('informa telefone pastoral separado', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Preciso conversar com um pastor',
+  });
+
+  assert.equal(result.rule, 'pastoral_support');
+  assert.match(
+    result.answer ?? '',
+    /\(71\) 3432-9119/,
+  );
+});
+
+test('não inventa informações do sistema prisional', () => {
+  const result = resolveCustomerServiceRule({
+    message:
+      'Quero saber quando será a audiência do meu marido',
+  });
+
+  assert.equal(
+    result.rule,
+    'prison_information',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /advogado/,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /assistente social/,
+  );
+});
+
+test('explica que texto não é lido no ar', () => {
+  const result = resolveCustomerServiceRule({
+    message:
+      'Posso mandar uma mensagem escrita para ler no programa?',
+  });
+
+  assert.equal(
+    result.rule,
+    'text_not_on_air',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /não são lidas no ar/,
+  );
+});
+
+test('inclui saudação somente na primeira interação', () => {
+  const first = resolveCustomerServiceRule({
+    message: 'Que horas começa o programa?',
+    firstInteraction: true,
+    localTime: '19:30',
+  });
+
+  assert.match(
+    first.answer ?? '',
+    /^Boa noite!/,
+  );
+
+  assert.match(
+    first.answer ?? '',
+    /Programa Momento do Presidiário/,
+  );
+
+  const second = resolveCustomerServiceRule({
+    message: 'Que horas começa o programa?',
+    firstInteraction: false,
+    localTime: '19:30',
+  });
+
+  assert.doesNotMatch(
+    second.answer ?? '',
+    /^Boa noite!/,
+  );
+});
+
+test('informa programa gravado em feriado quando pertinente', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Que horas passa o programa hoje?',
+    isHoliday: true,
+  });
+
+  assert.match(
+    result.answer ?? '',
+    /programa é gravado/,
+  );
+});
+
+test('pergunta não coberta segue para o assistente de IA', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Conte um pouco sobre a história da UNP',
+  });
+
+  assert.equal(result.matched, false);
+});
+
+test('responde saudação inicial sem chamar IA', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Boa noite',
+    firstInteraction: true,
+    localTime: '20:30',
+  });
+
+  assert.equal(
+    result.rule,
+    'initial_greeting',
+  );
+
+  assert.equal(
+    result.answer,
+    [
+      'Boa noite!',
+      'Programa Momento do Presidiário. Em que posso ajudar?',
+    ].join('\n'),
+  );
+});
+
+test('explica a UNP sem misturar outros públicos', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'O que é a UNP?',
+  });
+
+  assert.equal(result.rule, 'about_unp');
+
+  assert.match(
+    result.answer ?? '',
+    /pessoas privadas de liberdade/,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /familiares/,
+  );
+
+  assert.doesNotMatch(
+    result.answer ?? '',
+    /policiais|agentes|funcionários/i,
+  );
+});
+
+test('não promete transmissão de mensagem escrita', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Posso mandar escrito?',
+  });
+
+  assert.equal(
+    result.rule,
+    'text_not_on_air',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /não são lidas no ar/,
+  );
+
+  assert.doesNotMatch(
+    result.answer ?? '',
+    /será transmitid/i,
+  );
+});
+
+test('informa que o WhatsApp não atende ligações', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Posso ligar nesse número?',
+  });
+
+  assert.equal(
+    result.rule,
+    'whatsapp_no_calls',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /não atende ligações/,
+  );
+});
+
+test('orienta como ouvir pela rádio', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Como faço para ouvir o programa?',
+  });
+
+  assert.equal(
+    result.rule,
+    'how_to_listen',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /95\.9/,
+  );
+});
+
+test('informa Catedral da Fé quando perguntado', () => {
+  const result = resolveCustomerServiceRule({
+    message: 'Qual o endereço da igreja?',
+  });
+
+  assert.equal(
+    result.rule,
+    'church_invitation',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /Antônio Carlos Magalhães, 4197/,
+  );
+});
+
+test('entende forma natural de perguntar como ouvir', () => {
+  const examples = [
+    'Como faço para ouvir o programa?',
+    'Onde posso ouvir o programa?',
+    'Onde passa o Momento do Presidiário?',
+    'Qual é a rádio?',
+    'Qual é a frequência?',
+  ];
+
+  for (const message of examples) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+      });
+
+    assert.equal(
+      result.rule,
+      'how_to_listen',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /95\.9/,
+    );
+  }
+});
