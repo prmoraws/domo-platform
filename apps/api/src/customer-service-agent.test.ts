@@ -231,3 +231,47 @@ test('não envia mais de dez mensagens anteriores ao Gemini', async () => {
     }
   }
 });
+
+test('encerramento silencioso não chama Gemini', async () => {
+  const originalFetch = globalThis.fetch;
+
+  let fetchCalled = false;
+
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+
+    throw new Error(
+      'Gemini não deveria ser chamado'
+    );
+  };
+
+  try {
+    const result =
+      await runCustomerServiceAgent({
+        message: 'Amém',
+        firstInteraction: false,
+      });
+
+    assert.equal(
+      result.provider,
+      'deterministic',
+    );
+
+    assert.equal(
+      result.silent,
+      true,
+    );
+
+    assert.equal(
+      result.answer,
+      '',
+    );
+
+    assert.equal(
+      fetchCalled,
+      false,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

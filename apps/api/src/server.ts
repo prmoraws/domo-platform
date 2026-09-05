@@ -482,6 +482,7 @@ app.post<{
           provider: agent.provider,
           model: agent.model,
           durationMs: agent.durationMs,
+          silent: agent.silent === true,
         },
         timestamp: new Date().toISOString(),
       };
@@ -500,13 +501,8 @@ app.post<{
         service: 'domo-api',
         retryable: true,
         assistant: {
-          answer: [
-            'No momento não consegui concluir essa orientação.',
-            'Por favor, tente novamente em alguns minutos.',
-            'Se precisar de atendimento espiritual,',
-            'você também pode falar com um pastor pelo telefone',
-            '(71) 3432-9119.',
-          ].join(' '),
+          answer:
+            'No momento não consegui concluir essa orientação. Por favor, tente novamente em alguns minutos.',
           provider: 'fallback',
           model: 'customer-service-fallback',
           durationMs: 0,

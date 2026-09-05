@@ -9,6 +9,7 @@ export interface CustomerServiceRuleResult {
   matched: boolean;
   answer?: string;
   rule?: string;
+  silent?: boolean;
 }
 
 const normalize = (value: string): string =>
@@ -345,6 +346,139 @@ export const resolveCustomerServiceRule = (
           'aos domingos, às 9h30, na Catedral da Fé:',
           'Av. Antônio Carlos Magalhães, 4197, Iguatemi, Salvador - BA.',
         ].join(' '),
+        input,
+      ),
+    };
+  }
+
+
+  // Telegram — canal oficial do Momento do Presidiário.
+  const asksTelegram =
+    /\btelegram\b/.test(text);
+
+  if (asksTelegram) {
+    return {
+      matched: true,
+      rule: 'telegram',
+      answer: withInitialGreeting(
+        [
+          'Sim. O Telegram continua sendo o canal oficial do Momento do Presidiário',
+          'e continuamos recebendo os áudios por lá normalmente.',
+        ].join(' '),
+        input,
+      ),
+    };
+  }
+
+  // Datas específicas, aniversários e pedidos para tocar em um dia.
+  // Nunca prometer ou agendar transmissão de um áudio específico.
+  const asksSpecificDate =
+    /\b(aniversario|amanha|hoje|dia \d{1,2}|data especifica|passar no dia|tocar no dia|transmitir no dia|ser no dia)\b/.test(
+      text,
+    );
+
+  if (asksSpecificDate) {
+    return {
+      matched: true,
+      rule: 'specific_audio_date',
+      answer: withInitialGreeting(
+        [
+          'Não conseguimos agendar ou garantir que um áudio seja utilizado em uma data específica,',
+          'pois a seleção é feita manualmente pela equipe do programa.',
+          'Você pode enviar o áudio de até 20 segundos entre 21h e 22h.',
+        ].join(' '),
+        input,
+      ),
+    };
+  }
+
+  // Agradecimentos.
+  const isThanks =
+    /^(obrigad[oa]|obg|obgd|obgda|obgdo|muito obrigad[oa]|valeu|agradeco|gratidao)([!. 🙏❤️🥰]*)$/.test(
+      text,
+    );
+
+  if (isThanks) {
+    return {
+      matched: true,
+      rule: 'thanks',
+      answer: withInitialGreeting(
+        'Por nada! Deus abençoe você e sua família. 🙏',
+        input,
+      ),
+    };
+  }
+
+  // "Amém" é uma confirmação/encerramento comum.
+  const isAmen =
+    /^(amem)(\s+amem)*([!. 🙏]*)$/.test(
+      text,
+    );
+
+  if (isAmen) {
+    if (!input.firstInteraction) {
+      return {
+        matched: true,
+        rule: 'amen',
+        silent: true,
+      };
+    }
+
+    return {
+      matched: true,
+      rule: 'amen',
+      answer: withInitialGreeting(
+        'Amém! 🙏',
+        input,
+      ),
+    };
+  }
+
+  // Bênçãos e despedidas comuns.
+  const isBlessingOrFarewell =
+    /^(deus abencoe|fica com deus|fique com deus|bom trabalho|boa noite obrigado|boa noite obrigada|tenha um bom dia|tenha uma boa tarde|tenha uma boa noite)([!. 🙏❤️]*)$/.test(
+      text,
+    );
+
+  if (isBlessingOrFarewell) {
+    if (!input.firstInteraction) {
+      return {
+        matched: true,
+        rule: 'farewell',
+        silent: true,
+      };
+    }
+
+    return {
+      matched: true,
+      rule: 'farewell',
+      answer: withInitialGreeting(
+        'Amém! Deus abençoe você e sua família. 🙏',
+        input,
+      ),
+    };
+  }
+
+  // Confirmações curtas não devem chamar Gemini.
+  const isAcknowledgement =
+    /^(sim|certo|ok|okay|entendi|ta bom|beleza|combinado|vou fazer|vou mandar)([!. 🙏]*)$/.test(
+      text,
+    );
+
+  if (isAcknowledgement) {
+    if (!input.firstInteraction) {
+      return {
+        matched: true,
+        rule: 'acknowledgement',
+        silent: true,
+      };
+    }
+
+    return {
+      matched: true,
+      rule: 'acknowledgement',
+      answer: withInitialGreeting(
+        'Certo! Estamos à disposição.',
         input,
       ),
     };

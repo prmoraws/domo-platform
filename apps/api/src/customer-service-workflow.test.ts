@@ -252,3 +252,31 @@ test('workflow 20 mantém feriados locais críticos', () => {
     );
   }
 });
+
+test('workflow 20 suporta encerramento silencioso', () => {
+  const workflow = loadWorkflow();
+
+  const context = nodeByName(
+    workflow,
+    'Registrar contexto',
+  );
+
+  const code = String(
+    context.parameters?.jsCode ?? '',
+  );
+
+  assert.match(
+    code,
+    /assistant\?\.silent/,
+  );
+
+  assert.match(
+    code,
+    /if \(silent\)/,
+  );
+
+  assert.match(
+    code,
+    /return \[\]/,
+  );
+});

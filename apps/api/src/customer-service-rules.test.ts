@@ -281,3 +281,178 @@ test('entende forma natural de perguntar como ouvir', () => {
     );
   }
 });
+
+test('informa que Telegram continua recebendo áudios', () => {
+  const examples = [
+    'O Telegram ainda recebe os áudios?',
+    'Posso continuar mandando pelo Telegram?',
+    'O Telegram continua funcionando?',
+  ];
+
+  for (const message of examples) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'telegram',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /canal oficial/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /recebendo os áudios/i,
+    );
+  }
+});
+
+test('não promete transmissão em data específica', () => {
+  const examples = [
+    'Aniversário dele é amanhã',
+    'Quero que passe no dia 16',
+    'Pode transmitir no dia do aniversário?',
+  ];
+
+  for (const message of examples) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'specific_audio_date',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /não conseguimos agendar ou garantir/i,
+    );
+
+    assert.doesNotMatch(
+      result.answer ?? '',
+      /será transmitido|vamos transmitir|vai passar/i,
+    );
+  }
+});
+
+test('agradecimentos simples são determinísticos', () => {
+  for (const message of [
+    'Obrigada',
+    'Obrigado',
+    'Obg',
+    'Muito obrigada',
+  ]) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'thanks',
+      `Falhou para: ${message}`,
+    );
+  }
+});
+
+test('amém é tratado sem Gemini', () => {
+  for (const message of [
+    'Amém',
+    'Amem',
+    'Amém amém 🙏',
+  ]) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'amen',
+      `Falhou para: ${message}`,
+    );
+  }
+});
+
+test('confirmações simples são determinísticas', () => {
+  for (const message of [
+    'Certo',
+    'Entendi',
+    'Tá bom',
+    'Combinado',
+  ]) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'acknowledgement',
+      `Falhou para: ${message}`,
+    );
+  }
+});
+
+test('despedidas religiosas simples são determinísticas', () => {
+  for (const message of [
+    'Deus abençoe',
+    'Fique com Deus',
+    'Tenha uma boa noite',
+  ]) {
+    const result =
+      resolveCustomerServiceRule({ message });
+
+    assert.equal(
+      result.rule,
+      'farewell',
+      `Falhou para: ${message}`,
+    );
+  }
+});
+
+test('amém encerra silenciosamente conversa existente', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Amém',
+      firstInteraction: false,
+    });
+
+  assert.equal(result.rule, 'amen');
+  assert.equal(result.silent, true);
+  assert.equal(result.answer, undefined);
+});
+
+test('amém na primeira interação ainda recebe acolhimento', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Amém',
+      firstInteraction: true,
+      localTime: '10:00',
+    });
+
+  assert.equal(result.rule, 'amen');
+  assert.notEqual(result.silent, true);
+
+  assert.match(
+    result.answer ?? '',
+    /Programa Momento do Presidiário/,
+  );
+});
+
+test('confirmação após atendimento encerra silenciosamente', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Certo',
+      firstInteraction: false,
+    });
+
+  assert.equal(
+    result.rule,
+    'acknowledgement',
+  );
+
+  assert.equal(
+    result.silent,
+    true,
+  );
+});

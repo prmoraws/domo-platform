@@ -25,6 +25,7 @@ export interface CustomerServiceAgentResult {
   provider: 'gemini' | 'deterministic';
   model: string;
   durationMs: number;
+  silent?: boolean;
 }
 
 interface GeminiResponse {
@@ -90,16 +91,25 @@ export const runCustomerServiceAgent = async (
         : {}),
     });
 
-  if (
-    deterministic.matched &&
-    deterministic.answer
-  ) {
-    return {
-      answer: deterministic.answer,
-      provider: 'deterministic',
-      model: 'deterministic-rule',
-      durationMs: 0,
-    };
+  if (deterministic.matched) {
+    if (deterministic.silent === true) {
+      return {
+        answer: '',
+        provider: 'deterministic',
+        model: 'deterministic-rule',
+        durationMs: 0,
+        silent: true,
+      };
+    }
+
+    if (deterministic.answer) {
+      return {
+        answer: deterministic.answer,
+        provider: 'deterministic',
+        model: 'deterministic-rule',
+        durationMs: 0,
+      };
+    }
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
