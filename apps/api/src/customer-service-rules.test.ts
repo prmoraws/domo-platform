@@ -456,3 +456,134 @@ test('confirmação após atendimento encerra silenciosamente', () => {
     true,
   );
 });
+
+test('orienta canal preferencial para envio do áudio', () => {
+  const examples = [
+    'Por onde eu mando a mensagem',
+    'Onde mando o áudio?',
+    'Como faço para enviar o recado?',
+  ];
+
+  for (const message of examples) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+        firstInteraction: false,
+      });
+
+    assert.equal(
+      result.rule,
+      'send_audio',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /preferencialmente.*Telegram/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /canal oficial/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /WhatsApp também recebe/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /quando.*anunciado/i,
+    );
+  }
+});
+
+test('Telegram é informado como canal preferencial', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message:
+        'Ainda posso mandar os áudios pelo Telegram?',
+      firstInteraction: false,
+    });
+
+  assert.equal(
+    result.rule,
+    'telegram',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /canal preferencial/i,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /WhatsApp também recebe/i,
+  );
+});
+
+test('interrogação isolada não chama Gemini em conversa existente', () => {
+  for (const message of [
+    '?',
+    '??',
+    '?!',
+  ]) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+        firstInteraction: false,
+      });
+
+    assert.equal(
+      result.rule,
+      'punctuation_only',
+    );
+
+    assert.equal(
+      result.silent,
+      true,
+    );
+  }
+});
+
+test('entende abreviações sobre horário de envio', () => {
+  const examples = [
+    'Q horas posso mandar',
+    'Que horas posso mandar',
+    'Qual horário posso mandar',
+    'Hj envia?',
+    'Hoje envia?',
+    'Posso mandar hoje?',
+    'Hj posso mandar?',
+  ];
+
+  for (const message of examples) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+        firstInteraction: false,
+      });
+
+    assert.equal(
+      result.rule,
+      'audio_sending_time',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /21h e 22h/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /Telegram/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /quando.*anunciado/i,
+    );
+  }
+});

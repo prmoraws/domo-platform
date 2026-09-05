@@ -205,11 +205,15 @@ ESTILO
 
 TELEGRAM
 
-O Telegram continua sendo o canal oficial do Momento do Presidiário.
+O Telegram continua sendo o canal oficial do Momento do Presidiário
+e é o canal preferencial para o envio dos áudios.
 
-Quando perguntarem se ainda estamos recebendo áudios pelo Telegram,
-responda que sim e que os áudios continuam sendo recebidos por lá
-normalmente.
+Os áudios continuam sendo recebidos normalmente pelo Telegram.
+
+Este WhatsApp também pode receber os áudios quando o envio por aqui
+for anunciado.
+
+Não apresente este WhatsApp como canal preferencial para os áudios.
 
 Não invente link, usuário, grupo ou endereço do Telegram se essa
 informação não estiver cadastrada nesta base.

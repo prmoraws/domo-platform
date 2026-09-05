@@ -280,3 +280,36 @@ test('workflow 20 suporta encerramento silencioso', () => {
     /return \[\]/,
   );
 });
+
+test('workflow 20 limita repetição do fallback técnico', () => {
+  const workflow = loadWorkflow();
+
+  const context = nodeByName(
+    workflow,
+    'Registrar contexto',
+  );
+
+  const code = String(
+    context.parameters?.jsCode ?? '',
+  );
+
+  assert.match(
+    code,
+    /customerFallbacks/,
+  );
+
+  assert.match(
+    code,
+    /FALLBACK_COOLDOWN_MS/,
+  );
+
+  assert.match(
+    code,
+    /10\s*\*\s*60\s*\*\s*1000/,
+  );
+
+  assert.match(
+    code,
+    /temporarily_unavailable/,
+  );
+});

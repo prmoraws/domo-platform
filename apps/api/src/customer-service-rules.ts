@@ -248,7 +248,16 @@ export const resolveCustomerServiceRule = (
     };
   }
 
+  const asksWhereToSend =
+    /\b(por onde|onde|como)\b.*\b(mando|mandar|envio|enviar)\b.*\b(mensagem|recado|audio)\b/.test(
+      text,
+    ) ||
+    /\b(posso|pode)\b.*\b(mandar|enviar)\b.*\b(aqui|por aqui)\b/.test(
+      text,
+    );
+
   const wantsSendMessage =
+    asksWhereToSend ||
     /\b(mandar|enviar|passar)\b.*\b(audio|mensagem|recado|alo)\b/.test(
       text,
     ) ||
@@ -270,8 +279,10 @@ export const resolveCustomerServiceRule = (
       rule: 'send_audio',
       answer: withInitialGreeting(
         [
-          'Para enviar uma mensagem ao seu familiar, envie um áudio por este WhatsApp.',
-          'O áudio deve ter no máximo 20 segundos e ser enviado entre 21h e 22h.',
+          'Para enviar uma mensagem ao seu familiar, envie um áudio de até 20 segundos.',
+          'Preferencialmente, envie pelo Telegram, que é o canal oficial do Momento do Presidiário.',
+          'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
+          'O áudio deve ser enviado entre 21h e 22h.',
           'Não é uma conversa direta com ele(a); o áudio poderá ser utilizado durante o programa.',
           'Mensagens de texto não são lidas no ar.',
           holidayNote,
@@ -279,6 +290,32 @@ export const resolveCustomerServiceRule = (
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim(),
+        input,
+      ),
+    };
+  }
+
+  const asksAudioSendingTime =
+    /\b(q|que|qual)\s+(horas?|horario)\b.*\b(mando|mandar|envio|enviar|manda)\b/.test(
+      text,
+    ) ||
+    /\b(hj|hoje)\b.*\b(envia|enviar|manda|mandar|posso)\b/.test(
+      text,
+    ) ||
+    /\b(posso|pode)\b.*\b(mandar|enviar)\b.*\b(hj|hoje)\b/.test(
+      text,
+    );
+
+  if (asksAudioSendingTime) {
+    return {
+      matched: true,
+      rule: 'audio_sending_time',
+      answer: withInitialGreeting(
+        [
+          'Os áudios devem ser enviados entre 21h e 22h.',
+          'Preferencialmente, envie pelo Telegram, que é o canal oficial do Momento do Presidiário.',
+          'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
+        ].join(' '),
         input,
       ),
     };
@@ -352,6 +389,21 @@ export const resolveCustomerServiceRule = (
   }
 
 
+  // Pontuação isolada em conversa existente não deve acionar Gemini.
+  const isOnlyPunctuation =
+    /^[?!.,…]+$/.test(text);
+
+  if (
+    isOnlyPunctuation &&
+    !input.firstInteraction
+  ) {
+    return {
+      matched: true,
+      rule: 'punctuation_only',
+      silent: true,
+    };
+  }
+
   // Telegram — canal oficial do Momento do Presidiário.
   const asksTelegram =
     /\btelegram\b/.test(text);
@@ -363,7 +415,9 @@ export const resolveCustomerServiceRule = (
       answer: withInitialGreeting(
         [
           'Sim. O Telegram continua sendo o canal oficial do Momento do Presidiário',
-          'e continuamos recebendo os áudios por lá normalmente.',
+          'e é o canal preferencial para o envio dos áudios.',
+          'Continuamos recebendo os áudios por lá normalmente.',
+          'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
         ].join(' '),
         input,
       ),
