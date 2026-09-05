@@ -313,3 +313,53 @@ test('workflow 20 limita repetição do fallback técnico', () => {
     /temporarily_unavailable/,
   );
 });
+
+test('todos os nós Code do workflow 20 possuem JavaScript válido', async () => {
+  const vm = await import('node:vm');
+
+  const workflow = loadWorkflow();
+
+  for (const node of workflow.nodes ?? []) {
+    if (
+      node.type !== 'n8n-nodes-base.code'
+    ) {
+      continue;
+    }
+
+    const code = String(
+      node.parameters?.jsCode ?? '',
+    );
+
+    assert.doesNotThrow(
+      () =>
+        new vm.Script(
+          `(async () => {
+${code}
+})()`,
+        ),
+      `JavaScript inválido no nó: ${node.name}`,
+    );
+  }
+});
+
+test('fallback público é silencioso', () => {
+  const server = fs.readFileSync(
+    new URL('../src/server.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    server,
+    /status:\s*'temporarily_unavailable'/,
+  );
+
+  assert.match(
+    server,
+    /silent:\s*true/,
+  );
+
+  assert.doesNotMatch(
+    server,
+    /No momento não consegui concluir essa orientação/,
+  );
+});

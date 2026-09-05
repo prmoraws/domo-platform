@@ -501,11 +501,11 @@ app.post<{
         service: 'domo-api',
         retryable: true,
         assistant: {
-          answer:
-            'No momento não consegui concluir essa orientação. Por favor, tente novamente em alguns minutos.',
+          answer: '',
           provider: 'fallback',
           model: 'customer-service-fallback',
           durationMs: 0,
+          silent: true,
         },
         timestamp: new Date().toISOString(),
       });
