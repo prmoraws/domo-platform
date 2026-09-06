@@ -1,0 +1,135 @@
+{
+  "name": "DOMO - 30 - Atendimento Telegram",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [-1600, -80],
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      }
+    },
+    {
+      "name": "Preparar atendimento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1400, -80],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst message = input.message ?? input;\nconst chat = message.chat ?? {};\nconst from = message.from ?? {};\n\nconst chatId = String(chat.id ?? '');\nconst messageId = String(message.message_id ?? '');\nconst text = String(message.text ?? '').trim();\nconst isPrivate = String(chat.type ?? '') === 'private';\nconst fromBot = from.is_bot === true;\n\nlet messageType = 'other';\nif (text) {\n  messageType = 'text';\n} else if (message.voice || message.audio) {\n  messageType = 'audio';\n} else if (message.photo) {\n  messageType = 'image';\n} else if (message.video) {\n  messageType = 'video';\n} else if (message.document) {\n  messageType = 'document';\n} else if (message.sticker) {\n  messageType = 'sticker';\n}\n\nconst TIME_ZONE = 'America/Bahia';\nconst formatter = new Intl.DateTimeFormat('en-CA', {\n  timeZone: TIME_ZONE,\n  year: 'numeric',\n  month: '2-digit',\n  day: '2-digit',\n  weekday: 'short',\n  hour: '2-digit',\n  minute: '2-digit',\n  hourCycle: 'h23',\n});\n\nconst parts = Object.fromEntries(\n  formatter.formatToParts(new Date())\n    .filter(part => part.type !== 'literal')\n    .map(part => [part.type, part.value])\n);\n\nconst localDate = `${parts.year}-${parts.month}-${parts.day}`;\nconst localHour = Number(parts.hour);\nconst localMinute = Number(parts.minute);\n\nconst easterSunday = year => {\n  const a = year % 19;\n  const b = Math.floor(year / 100);\n  const c = year % 100;\n  const d = Math.floor(b / 4);\n  const e = b % 4;\n  const f = Math.floor((b + 8) / 25);\n  const g = Math.floor((b - f + 1) / 3);\n  const h = (19 * a + b - d - g + 15) % 30;\n  const i = Math.floor(c / 4);\n  const k = c % 4;\n  const l = (32 + 2 * e + 2 * i - h - k) % 7;\n  const m = Math.floor((a + 11 * h + 22 * l) / 451);\n  const month = Math.floor((h + l - 7 * m + 114) / 31);\n  const day = ((h + l - 7 * m + 114) % 31) + 1;\n  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));\n};\n\nconst formatBahiaDate = date => {\n  const p = Object.fromEntries(\n    formatter.formatToParts(date)\n      .filter(part => part.type !== 'literal')\n      .map(part => [part.type, part.value])\n  );\n  return `${p.year}-${p.month}-${p.day}`;\n};\n\nconst addDays = (date, days) => new Date(date.getTime() + days * 86400000);\nconst year = Number(parts.year);\nconst easter = easterSunday(year);\nconst goodFriday = formatBahiaDate(addDays(easter, -2));\nconst corpusChristi = formatBahiaDate(addDays(easter, 60));\n\nconst holidays = new Set([\n  `${parts.year}-01-01`,\n  goodFriday,\n  `${parts.year}-04-21`,\n  `${parts.year}-05-01`,\n  corpusChristi,\n  `${parts.year}-06-24`,\n  `${parts.year}-07-02`,\n  `${parts.year}-09-07`,\n  `${parts.year}-10-12`,\n  `${parts.year}-11-02`,\n  `${parts.year}-11-15`,\n  `${parts.year}-11-20`,\n  `${parts.year}-12-08`,\n  `${parts.year}-12-25`,\n]);\n\nconst isHoliday = holidays.has(localDate);\nconst isWeekend = parts.weekday === 'Sat' || parts.weekday === 'Sun';\nconst isProgramWindow = !isWeekend && !isHoliday && localHour === 21;\n\nconst state = $getWorkflowStaticData('global');\nstate.customerSessions ??= {};\nstate.processedMessages ??= {};\n\nconst dedupKey = `telegram:${chatId}:${messageId}`;\nconst nowMs = Date.now();\nconst DEDUP_TTL_MS = 15 * 60 * 1000;\n\nfor (const [id, timestamp] of Object.entries(state.processedMessages)) {\n  if (typeof timestamp !== 'number' || nowMs - timestamp > DEDUP_TTL_MS) {\n    delete state.processedMessages[id];\n  }\n}\n\nconst duplicated = Boolean(messageId && state.processedMessages[dedupKey]);\nif (chatId && messageId && !duplicated) {\n  state.processedMessages[dedupKey] = nowMs;\n}\n\nconst shouldRespond =\n  !duplicated &&\n  !fromBot &&\n  isPrivate &&\n  messageType === 'text' &&\n  text.length > 0 &&\n  !isProgramWindow;\n\nconst sessionKey = `telegram:${chatId}`;\nconst SESSION_MINUTES = 30;\nconst ttl = SESSION_MINUTES * 60 * 1000;\nconst current = state.customerSessions[sessionKey];\nconst hasActiveSession = Boolean(\n  current?.lastSeen && Date.now() - current.lastSeen < ttl\n);\nconst firstInteraction = !hasActiveSession;\nconst history = Array.isArray(current?.history)\n  ? current.history.slice(-10)\n  : [];\n\nif (shouldRespond) {\n  state.customerSessions[sessionKey] = { lastSeen: Date.now(), history };\n}\n\nreturn [{ json: {\n  shouldRespond,\n  reason: duplicated\n    ? 'duplicate'\n    : fromBot\n      ? 'from_bot'\n      : !isPrivate\n        ? 'non_private'\n        : messageType !== 'text'\n          ? 'non_text'\n          : isProgramWindow\n            ? 'live_program'\n            : 'text_allowed',\n  channel: 'telegram',\n  chatId,\n  messageId,\n  messageType,\n  text,\n  firstInteraction,\n  history,\n  isHoliday,\n  isWeekend,\n  isProgramWindow,\n  localDate,\n  localTime: String(localHour).padStart(2, '0') + ':' + String(localMinute).padStart(2, '0'),\n} }];"
+      }
+    },
+    {
+      "name": "Responder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-1200, -80],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "domo-telegram-responder",
+              "leftValue": "={{ $json.shouldRespond === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Consultar atendimento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [-1000, -160],
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/customer-service/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "options": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: $('Preparar atendimento').item.json.text, firstInteraction: $('Preparar atendimento').item.json.firstInteraction, isHoliday: $('Preparar atendimento').item.json.isHoliday, localDate: $('Preparar atendimento').item.json.localDate, localTime: $('Preparar atendimento').item.json.localTime, history: $('Preparar atendimento').item.json.history } }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "E8wfJ0ehPWLuEZ7p",
+          "name": "DOMO API Internal"
+        }
+      }
+    },
+    {
+      "name": "Registrar contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, -160],
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst context = $('Preparar atendimento').item.json;\nconst silent = response.assistant?.silent === true;\n\nlet answer = String(response.assistant?.answer ?? '').trim();\nif (!answer && !silent) {\n  return [];\n}\n\nanswer = answer\n  .replace(\n    'Preferencialmente, envie pelo Telegram, que é o canal oficial do Momento do Presidiário.',\n    'Você pode enviar o áudio por aqui mesmo, pelo Telegram, que é o canal oficial do Momento do Presidiário.'\n  )\n  .replace(\n    'Continuamos recebendo os áudios por lá normalmente.',\n    'Continuamos recebendo os áudios por aqui normalmente.'\n  )\n  .replace(\n    'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',\n    'O WhatsApp também recebe os áudios quando o recebimento por lá for anunciado.'\n  );\n\nconst state = $getWorkflowStaticData('global');\nstate.customerSessions ??= {};\nconst sessionKey = `telegram:${context.chatId}`;\nconst current = state.customerSessions[sessionKey] ?? { history: [] };\nconst history = Array.isArray(current.history) ? current.history : [];\n\nhistory.push({\n  role: 'user',\n  text: String(context.text).slice(0, 2000),\n});\n\nif (!silent && answer) {\n  history.push({\n    role: 'assistant',\n    text: answer.slice(0, 2000),\n  });\n}\n\nstate.customerSessions[sessionKey] = {\n  lastSeen: Date.now(),\n  history: history.slice(-10),\n};\n\nif (silent || !answer) {\n  return [];\n}\n\nreturn [{ json: { chatId: context.chatId, text: answer } }];"
+      }
+    },
+    {
+      "name": "Preparar resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, -160],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst raw = String(input.text ?? '').replace(/\\s*\\n+\\s*/g, '\\n').trim();\nif (!raw) {\n  return [];\n}\nconst limit = 3500;\nconst text = raw.length > limit\n  ? raw.slice(0, limit - 80).trimEnd() + '…\\n\\nResposta limitada para envio seguro pelo Telegram.'\n  : raw;\nreturn [{ json: { chatId: input.chatId, text } }];"
+      }
+    },
+    {
+      "name": "Responder Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-400, -160],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Preparar atendimento", "type": "main", "index": 0}]]
+    },
+    "Preparar atendimento": {
+      "main": [[{"node": "Responder?", "type": "main", "index": 0}]]
+    },
+    "Responder?": {
+      "main": [[{"node": "Consultar atendimento", "type": "main", "index": 0}], []]
+    },
+    "Consultar atendimento": {
+      "main": [[{"node": "Registrar contexto", "type": "main", "index": 0}]]
+    },
+    "Registrar contexto": {
+      "main": [[{"node": "Preparar resposta", "type": "main", "index": 0}]]
+    },
+    "Preparar resposta": {
+      "main": [[{"node": "Responder Telegram", "type": "main", "index": 0}]]
+    },
+    "Responder Telegram": {
+      "main": [[]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

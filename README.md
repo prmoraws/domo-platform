@@ -1,27 +1,38 @@
 # DOMO Platform
 
-Plataforma local e futura infraestrutura de produção para consulta segura de dados, automações e inteligência artificial.
+Plataforma de automação e inteligência artificial com atendimento público do Momento do Presidiário e agente administrativo separado.
 
-## Objetivos
+## Documentação principal
 
-- Sincronizar uma réplica do banco de dados do sistema DOMO.
-- Consultar informações por chat e WhatsApp.
-- Utilizar RAG para compreender tabelas, campos, regras e documentos.
-- Executar consultas por uma API Node.js segura.
-- Automatizar processos utilizando n8n.
-- Manter dados pessoais protegidos e acesso auditável.
+Antes de dar manutenção ou implementar melhorias, leia:
 
-## Componentes previstos
+- `HANDOFF-DOMO-PLATFORM.md` — handoff técnico canônico e estado operacional.
+- `docs/architecture/ATENDIMENTO-WHATSAPP.md` — atendimento público via WhatsApp.
+- `docs/architecture/ATENDIMENTO-TELEGRAM.md` — atendimento público via Telegram.
+- `docs/OPERACAO-MOMENTO-PRESIDIARIO.md` — regras operacionais do programa.
 
-- Node.js com TypeScript
+Não crie handoffs datados novos. Atualize sempre `HANDOFF-DOMO-PLATFORM.md`; o histórico do Git preserva as versões anteriores.
+
+## Componentes
+
+- Node.js + TypeScript
 - n8n
+- Evolution API
+- Telegram Bot API via nós nativos do n8n
 - PostgreSQL
-- MySQL
-- Qdrant
+- MariaDB réplica somente leitura
+- Redis
+- Gemini
+- Ollama
 - Docker Compose
-- Proxy HTTPS
+
+## Canais
+
+- WhatsApp administrativo: workflow 10, isolado e com consultas seguras à réplica.
+- WhatsApp público: workflow 20, sem acesso ao banco.
+- Telegram público: workflow 30, usando o mesmo agente público do WhatsApp e sem acesso ao banco.
 
 ## Ambientes
 
-- Desenvolvimento: WSL2 com Docker Desktop
-- Produção: VPS Oracle Always Free
+- Desenvolvimento: WSL2 com Docker Desktop.
+- Produção: stack Docker da DOMO Platform.
