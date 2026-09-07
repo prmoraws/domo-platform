@@ -248,6 +248,73 @@ export const resolveCustomerServiceRule = (
     };
   }
 
+  // Perguntas específicas sobre quando o áudio enviado será veiculado.
+  // Esta informação não deve ser acrescentada espontaneamente às
+  // orientações gerais de envio.
+  const asksIfAudioAirsToday =
+    (
+      /\b(audio|mensagem|recado)\b.*\b(vai|ira|pode|deve)\b.*\b(passar|tocar|ir ao ar|ser transmitido|ser usado)\b.*\b(hoje|hj)\b/.test(
+        text,
+      ) ||
+      /\b(vai|ira|pode|deve)\b.*\b(passar|tocar|ir ao ar|ser transmitido|ser usado)\b.*\b(hoje|hj)\b.*\b(audio|mensagem|recado)\b/.test(
+        text,
+      ) ||
+      /\b(audio|mensagem|recado)\b.*\b(hoje|hj)\b.*\b(passar|tocar|ir ao ar|transmitido|usado)\b/.test(
+        text,
+      )
+    );
+
+  if (asksIfAudioAirsToday) {
+    return {
+      matched: true,
+      rule: 'audio_airs_next_day',
+      answer: withInitialGreeting(
+        [
+          'O áudio enviado hoje vai para produção',
+          'e passa no programa do dia seguinte.',
+        ].join(' '),
+        input,
+      ),
+    };
+  }
+
+  const asksCanSendAudioToday =
+    (
+      /\b(posso|pode|da para|consigo)\b.*\b(enviar|mandar)\b.*\b(audio|mensagem|recado)\b.*\b(hoje|hj)\b/.test(
+        text,
+      ) ||
+      /\b(posso|pode|da para|consigo)\b.*\b(enviar|mandar)\b.*\b(hoje|hj)\b/.test(
+        text,
+      ) ||
+      /\b(hoje|hj)\b.*\b(posso|pode|da para|consigo)\b.*\b(enviar|mandar)\b/.test(
+        text,
+      )
+    );
+
+  if (asksCanSendAudioToday) {
+    const answer =
+      input.isHoliday === true
+        ? [
+            'Sim. Você pode enviar o áudio hoje.',
+            'Como hoje é feriado e o programa está gravado,',
+            'o áudio enviado hoje vai para produção e passa amanhã no programa.',
+          ].join(' ')
+        : [
+            'Sim. Você pode enviar o áudio hoje.',
+            'O áudio enviado hoje vai para produção',
+            'e passa no programa do dia seguinte.',
+          ].join(' ');
+
+    return {
+      matched: true,
+      rule: 'can_send_audio_today',
+      answer: withInitialGreeting(
+        answer,
+        input,
+      ),
+    };
+  }
+
   const asksWhereToSend =
     /\b(por onde|onde|como)\b.*\b(mando|mandar|envio|enviar)\b.*\b(mensagem|recado|audio)\b/.test(
       text,

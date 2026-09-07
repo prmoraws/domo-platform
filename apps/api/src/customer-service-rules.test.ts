@@ -554,8 +554,8 @@ test('entende abreviações sobre horário de envio', () => {
     'Qual horário posso mandar',
     'Hj envia?',
     'Hoje envia?',
-    'Posso mandar hoje?',
-    'Hj posso mandar?',
+    'Q horas posso mandar?',
+    'Qual horário posso mandar?',
   ];
 
   for (const message of examples) {
@@ -586,4 +586,122 @@ test('entende abreviações sobre horário de envio', () => {
       /quando.*anunciado/i,
     );
   }
+});
+
+test('informa que áudio enviado hoje passa no programa do dia seguinte', () => {
+  const messages = [
+    'Meu áudio vai passar hoje?',
+    'O áudio vai passar hoje?',
+    'O áudio que mandei hoje vai passar hoje?',
+  ];
+
+  for (const message of messages) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+        firstInteraction: false,
+        isHoliday: false,
+        localTime: '16:30',
+      });
+
+    assert.equal(
+      result.rule,
+      'audio_airs_next_day',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /enviado hoje vai para produção/i,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /programa do dia seguinte/i,
+    );
+  }
+});
+
+test('permite enviar áudio hoje sem transformar orientação geral em promessa', () => {
+  const messages = [
+    'Posso enviar hoje?',
+    'Posso mandar o áudio hoje?',
+    'Hoje posso enviar?',
+  ];
+
+  for (const message of messages) {
+    const result =
+      resolveCustomerServiceRule({
+        message,
+        firstInteraction: false,
+        isHoliday: false,
+        localTime: '16:30',
+      });
+
+    assert.equal(
+      result.rule,
+      'can_send_audio_today',
+      `Falhou para: ${message}`,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /^Sim\. Você pode enviar o áudio hoje\./,
+    );
+
+    assert.match(
+      result.answer ?? '',
+      /programa do dia seguinte/i,
+    );
+  }
+});
+
+test('em feriado permite envio hoje e informa veiculação amanhã', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Posso enviar o áudio hoje?',
+      firstInteraction: false,
+      isHoliday: true,
+      localTime: '16:30',
+    });
+
+  assert.equal(
+    result.rule,
+    'can_send_audio_today',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /hoje é feriado/i,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /programa está gravado/i,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /passa amanhã no programa/i,
+  );
+});
+
+test('orientação genérica de envio não informa espontaneamente dia seguinte', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Como eu mando uma mensagem para meu filho preso?',
+      firstInteraction: false,
+      isHoliday: false,
+      localTime: '16:30',
+    });
+
+  assert.equal(
+    result.rule,
+    'send_audio',
+  );
+
+  assert.doesNotMatch(
+    result.answer ?? '',
+    /dia seguinte|amanhã/i,
+  );
 });
