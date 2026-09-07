@@ -1,0 +1,7 @@
+[Unit]
+Description=Recuperar serviços e acesso público do DOMO
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/moraws/domo-platform/scripts/recover-public-access.sh
