@@ -194,6 +194,39 @@ services:
     networks:
       - edge
 
+
+  telegram-user:
+    build:
+      context: ./apps/telegram-user
+      dockerfile: Dockerfile
+    image: domo-telegram-user:0.1.0
+    container_name: domo-telegram-user
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_FILE: /data/session.txt
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN}
+      DOMO_CUSTOMER_SERVICE_URL: http://api:3001/internal/customer-service/query
+    volumes:
+      - ./data/telegram-user:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - src/healthcheck.mjs
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - backend
+      - edge
+
   api:
     build:
       context: ./apps/api

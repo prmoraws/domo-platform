@@ -1,0 +1,16 @@
+{
+  "name": "@domo/telegram-user",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "auth": "node src/auth.mjs",
+    "listen": "node src/listen.mjs",
+    "start": "node src/listen.mjs",
+    "test": "node --check src/auth.mjs && node --check src/listen.mjs && node --check src/healthcheck.mjs"
+  },
+  "dependencies": {
+    "teleproto": "^1.229.0"
+  },
+  "start": "node src/listen.mjs"
+}

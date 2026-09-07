@@ -6,7 +6,6 @@ PUBLIC_HOST="domo-n8n.tailbd3b60.ts.net"
 PUBLIC_WEBHOOK="https://${PUBLIC_HOST}/webhook/domo-atendimento-inbound"
 WORKFLOW_10="gseL5lW5viEgNEWQ"
 WORKFLOW_20="VAhyWtgWl6kzU8gL"
-WORKFLOW_30="DOMO30TELEGRAM01"
 STATE_DIR="${HOME}/.local/state/domo"
 LOG_FILE="${STATE_DIR}/public-access-recovery.log"
 LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/domo-public-access-recovery.lock"
@@ -32,7 +31,7 @@ fi
 if ! docker compose up -d \
   postgres mariadb api n8n \
   evolution-postgres evolution-redis evolution \
-  tailscale-n8n >/dev/null 2>&1; then
+  telegram-user tailscale-n8n >/dev/null 2>&1; then
   log "ERROR Falha ao garantir serviços DOMO."
   exit 1
 fi
@@ -132,12 +131,12 @@ WORKFLOW_STATE="$(
     -U "$POSTGRES_USER_VALUE" \
     -d "$POSTGRES_DB_VALUE" \
     -At \
-    -c "SELECT id || ':' || active FROM workflow_entity WHERE id IN ('$WORKFLOW_10','$WORKFLOW_20','$WORKFLOW_30') ORDER BY id;" \
+    -c "SELECT id || ':' || active FROM workflow_entity WHERE id IN ('$WORKFLOW_10','$WORKFLOW_20') ORDER BY id;" \
     2>/dev/null || true
 )"
 
 need_n8n_restart=false
-for workflow in "$WORKFLOW_10" "$WORKFLOW_20" "$WORKFLOW_30"; do
+for workflow in "$WORKFLOW_10" "$WORKFLOW_20"; do
   if ! grep -Fq "${workflow}:t" <<< "$WORKFLOW_STATE"; then
     log "WARN Workflow ${workflow} não está ativo. Ativando."
     if docker compose exec -T n8n n8n update:workflow --id="$workflow" --active=true >/dev/null 2>&1; then
@@ -158,6 +157,45 @@ if [[ "$need_n8n_restart" == "true" ]]; then
     fi
     sleep 3
   done
+fi
+
+telegram_health="$(
+  docker inspect \
+    --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+    domo-telegram-user \
+    2>/dev/null \
+    || true
+)"
+
+if [[ "$telegram_health" != "healthy" ]]; then
+  log "WARN Telegram MTProto não está saudável. Reiniciando somente telegram-user."
+
+  docker compose restart telegram-user \
+    >/dev/null 2>&1 || true
+
+  telegram_ok=false
+
+  for _ in $(seq 1 18); do
+    telegram_health="$(
+      docker inspect \
+        --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+        domo-telegram-user \
+        2>/dev/null \
+        || true
+    )"
+
+    if [[ "$telegram_health" == "healthy" ]]; then
+      telegram_ok=true
+      break
+    fi
+
+    sleep 5
+  done
+
+  if [[ "$telegram_ok" != "true" ]]; then
+    log "ERROR Telegram MTProto não recuperou."
+    exit 1
+  fi
 fi
 
 for path in domo-whatsapp-inbound domo-atendimento-inbound; do
