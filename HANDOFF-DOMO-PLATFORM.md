@@ -1,36 +1,38 @@
 # HANDOFF TÉCNICO — DOMO PLATFORM
 
-**Documento canônico. Atualizado em 2026-09-06.**
+**Documento canônico. Atualizado em 2026-09-07.**
 
 Repositório: `prmoraws/domo-platform`  
 Branch de produção: `main`
 
-> Este é o único handoff ativo do projeto. Handoffs datados antigos foram consolidados aqui e devem ser consultados somente pelo histórico do Git.
+> Este é o único handoff ativo do projeto. Handoffs datados antigos devem ser consultados apenas pelo histórico do Git.
 
 ## 0. Regras para qualquer agente de IA
 
-Antes de alterar produção:
+Este projeto está em uso real. Antes de alterar qualquer coisa:
 
-1. Leia este arquivo e a documentação em `docs/`.
-2. Confira `git status --short` e os commits recentes.
+1. Leia este handoff e a documentação em `docs/`.
+2. Rode `git status --short` e confira os commits recentes.
 3. Não misture o agente administrativo com o atendimento público.
 4. Atendimento público nunca acessa MariaDB/MySQL nem o agente SQL.
-5. Não exponha tokens, chaves, senhas, JIDs ou respostas brutas de provedores.
+5. Não exponha tokens, chaves, senhas, JIDs, conteúdo privado ou respostas brutas de provedores.
 6. Faça backup de workflow n8n ativo antes de importar/substituir.
-7. Preserve IDs/webhookIds dos workflows existentes.
-8. Rode `npm test`, `npm run typecheck`, `npm run build` em `apps/api`.
+7. Preserve IDs e webhookIds dos workflows existentes.
+8. Rode `npm test`, `npm run typecheck`, `npm run build` em `apps/api` após mudanças TypeScript.
 9. Rode `git diff --check` antes de commit.
 10. Falha do Gemini no atendimento público deve permanecer silenciosa.
 11. Regras operacionais de Salvador/Bahia têm prioridade sobre informação genérica.
-12. Atualize este handoff após mudanças arquiteturais ou operacionais.
+12. Não reinicie todos os serviços como primeira tentativa de recuperação; identifique o componente com falha.
+13. Nunca tocar na Agenda (`~/agenda`) a partir de scripts do DOMO.
+14. Atualize este handoff após mudanças arquiteturais, operacionais ou institucionais.
 
 ## 1. Arquitetura
 
-A DOMO Platform usa Node.js/TypeScript, n8n, Evolution API, PostgreSQL, Redis, MariaDB réplica somente leitura, Gemini e Ollama.
+DOMO Platform usa Node.js/TypeScript, n8n, Evolution API, PostgreSQL, Redis, MariaDB réplica somente leitura, Gemini, Ollama e Tailscale.
 
-Há três canais/fluxos logicamente separados:
+Há três fluxos separados.
 
-### 1.1 Agente administrativo — WhatsApp
+### 1.1 WhatsApp administrativo
 
 - Evolution: `domo-assistente`
 - n8n: `DOMO - 10 - Entrada WhatsApp`
@@ -39,7 +41,7 @@ Há três canais/fluxos logicamente separados:
 - API: `POST /internal/assistant/query`
 - pode consultar a réplica somente leitura por meio do agente SQL seguro.
 
-### 1.2 Atendimento público — WhatsApp
+### 1.2 WhatsApp público — Momento do Presidiário
 
 - Evolution: `domo-atendimento`
 - WhatsApp: `(71) 99185-6704`
@@ -50,21 +52,21 @@ Há três canais/fluxos logicamente separados:
 - API: `POST /internal/customer-service/query`
 - não acessa banco.
 
-### 1.3 Atendimento público — Telegram
+### 1.3 Telegram público — Momento do Presidiário
 
 - n8n: `DOMO - 30 - Atendimento Telegram`
+- workflow ID operacional: `DOMO30TELEGRAM01`
 - arquivo: `infrastructure/n8n/workflows/30-atendimento-telegram.json`
-- API: a mesma `POST /internal/customer-service/query`
+- API: `POST /internal/customer-service/query`
+- URL pública: `https://domo-n8n.tailbd3b60.ts.net/`
 - usa a mesma base institucional e as mesmas regras do WhatsApp;
 - sessões: `telegram:<chat_id>`;
 - deduplicação: `telegram:<chat_id>:<message_id>`;
-- texto privado elegível recebe atendimento;
+- somente chats privados respondem;
 - mídia/áudio não recebe resposta automática;
 - grupos e mensagens de bots são ignorados;
 - `silent` e fallback silencioso são preservados;
-- o workflow fica desativado no Git até a credencial Telegram ser associada no n8n.
-
-Documentação operacional: `docs/architecture/ATENDIMENTO-TELEGRAM.md`.
+- credencial do bot existe somente no n8n.
 
 ## 2. Fluxos
 
@@ -85,15 +87,18 @@ WhatsApp público
 
 Telegram público
  -> Telegram Bot
+ -> HTTPS Tailscale Funnel
  -> workflow 30
  -> /internal/customer-service/query
  -> regras determinísticas ou Gemini
  -> Telegram Bot
 ```
 
-Não criar um segundo “cérebro” para Telegram. Conhecimento e política devem continuar centralizados na API.
+Nunca criar um segundo “cérebro” para Telegram. Conhecimento e política ficam centralizados na API.
 
-## 3. Serviços observados em produção
+## 3. Infraestrutura observada
+
+Serviços:
 
 - `domo-api`
 - `domo-evolution`
@@ -103,6 +108,7 @@ Não criar um segundo “cérebro” para Telegram. Conhecimento e política dev
 - `domo-n8n`
 - `domo-ollama`
 - `domo-postgres`
+- `domo-tailscale-n8n`
 
 Versões observadas:
 
@@ -112,6 +118,7 @@ Versões observadas:
 - Redis `7.4-alpine`
 - MariaDB `10.11.18`
 - Ollama `0.32.6`
+- Tailscale `1.102.3`
 - API DOMO `0.1.0`
 
 Portas locais:
@@ -122,7 +129,47 @@ Portas locais:
 - MariaDB réplica `127.0.0.1:3307`
 - Ollama `127.0.0.1:11434`
 
-## 4. Arquivos críticos
+## 4. Tailscale Funnel do DOMO
+
+O DOMO possui nó Tailscale próprio:
+
+- container: `domo-tailscale-n8n`
+- hostname: `domo-n8n`
+- DNS: `domo-n8n.tailbd3b60.ts.net`
+- volume: `domo-tailscale-n8n-state`
+- configuração: `infrastructure/tailscale/n8n/serve.json`
+
+Handlers:
+
+```text
+/webhook/      -> http://n8n:5678/webhook/
+/webhook-test/ -> http://n8n:5678/webhook-test/
+```
+
+O editor n8n continua local em `http://localhost:5678`.
+
+Para n8n 2.33.4 usar:
+
+```text
+N8N_WEBHOOK_URL=https://domo-n8n.tailbd3b60.ts.net/
+```
+
+Não usar `WEBHOOK_URL`; esta versão do n8n emite aviso para usar `N8N_WEBHOOK_URL`.
+
+### Agenda é separada
+
+A Agenda usa outro projeto e outro nó Tailscale:
+
+```text
+~/agenda
+agenda.tailbd3b60.ts.net
+agenda-tailscale
+agenda_tailscale_state
+```
+
+Nenhum script do DOMO deve reiniciar, alterar ou reutilizar componentes da Agenda.
+
+## 5. Arquivos críticos
 
 Atendimento público:
 
@@ -139,6 +186,16 @@ Atendimento público:
 - `infrastructure/n8n/workflows/20-atendimento-whatsapp.json`
 - `infrastructure/n8n/workflows/30-atendimento-telegram.json`
 
+Operação:
+
+- `infrastructure/tailscale/n8n/serve.json`
+- `scripts/deploy-telegram-workflow.sh`
+- `scripts/recover-public-access.sh`
+- `scripts/check-production-health.sh`
+- `scripts/monitor-production-health.sh`
+- `infrastructure/systemd/domo-access-recovery.service`
+- `infrastructure/systemd/domo-access-recovery.timer`
+
 Documentação:
 
 - `docs/momento-presidiario.md`
@@ -148,12 +205,7 @@ Documentação:
 - `docs/AGENTE-WHATSAPP-LOCAL.md`
 - `docs/OBSERVABILIDADE-E-RECUPERACAO.md`
 
-Operação:
-
-- `scripts/check-production-health.sh`
-- `scripts/monitor-production-health.sh`
-
-## 5. Base institucional — Momento do Presidiário
+## 6. Base institucional — Momento do Presidiário
 
 - Organização: UNP — Universal nos Presídios.
 - Igreja: Igreja Universal do Reino de Deus.
@@ -161,50 +213,44 @@ Operação:
 - Programa: segunda a sexta, 21h–22h.
 - Feriados: programa gravado.
 - WhatsApp público: `(71) 99185-6704`.
-- Participação ao vivo: `(71) 3432-9110`, durante o programa.
+- Participação ao vivo: `(71) 3432-9110` durante o programa.
 - Atendimento espiritual: `(71) 3432-9119`.
 - Catedral da Fé: domingos 9h30, Av. Antônio Carlos Magalhães, 4197, Iguatemi, Salvador - BA.
 
-Apresentadores informados:
-
-- Bispo Sérgio Simplício
-- Pastor Moraes
-- Missionária Lilian Moraes
-
-## 6. Regras de áudio
+## 7. Regras de áudio
 
 1. Até 20 segundos.
 2. Envio entre 21h e 22h.
 3. Telegram é canal oficial/preferencial.
-4. No Telegram, orientar que o áudio pode ser enviado “por aqui mesmo”.
+4. No Telegram, orientar que pode enviar “por aqui mesmo”.
 5. WhatsApp também recebe quando anunciado.
 6. Texto não é lido no ar.
-7. Seleção é manual pela equipe.
+7. Seleção é manual.
 8. Assistente não escolhe, agenda nem promete transmissão.
 9. Não garantir data específica, inclusive aniversário.
 10. Um áudio por dia por pessoa.
-11. Ao receber mídia/áudio, não responder automaticamente.
+11. Ao receber áudio/mídia, não responder automaticamente.
 12. Se perguntarem o que falar, orientar mensagem de carinho e conforto.
 
-Não inventar username ou link do Telegram. O repositório não contém um identificador oficial confirmado.
+Não inventar username ou link oficial do Telegram se não estiver documentado.
 
-## 7. Horário do atendimento automático
+## 8. Horário do atendimento automático
 
 Timezone: `America/Bahia`.
 
 - segunda a sexta fora de 21h–22h: atende;
 - segunda a sexta 21h–22h: suspenso;
 - sábado e domingo: atende;
-- feriado: atende e, quando pertinente, informa que o programa é gravado.
+- feriado: atende e, quando pertinente, informa programa gravado.
 
-Feriados locais implementados incluem 24/06, 02/07 e 08/12, além de nacionais/móveis previstos no workflow.
+Feriados locais já cobertos incluem 24/06, 02/07 e 08/12, além de nacionais/móveis implementados.
 
-## 8. Regras determinísticas e sociais
+## 9. Regras determinísticas e sociais
 
-`customer-service-rules.ts` deve resolver sem Gemini sempre que possível:
+`customer-service-rules.ts` resolve sem Gemini sempre que possível:
 
 - saudação;
-- envio e horário de áudio;
+- envio/horário de áudio;
 - Telegram;
 - telefone ao vivo;
 - atendimento pastoral;
@@ -217,46 +263,22 @@ Feriados locais implementados incluem 24/06, 02/07 e 08/12, além de nacionais/m
 - agradecimentos e encerramentos;
 - datas específicas.
 
-Exemplos importantes:
+Exemplos:
 
-- `Obrigada` -> resposta curta de bênção.
-- `Amém` em sessão existente -> `silent: true`.
-- `Certo`, `Entendi`, `Tá bom`, `Combinado` -> silêncio em sessão existente.
+- `Obrigada` -> resposta curta;
+- `Amém` em sessão existente -> `silent: true`;
+- `Certo`, `Entendi`, `Tá bom`, `Combinado` -> silêncio;
 - pontuação isolada -> silêncio.
 
-## 9. Gemini e fallback
+## 10. Gemini e fallback
 
 Gemini só atende perguntas abertas não cobertas deterministicamente.
 
-Variáveis:
-
-- `GEMINI_API_KEY`
-- `GEMINI_API_URL`
-- `GEMINI_MODEL`
-- `GEMINI_PLANNER_MODEL`
-- `GEMINI_RATE_LIMIT_COOLDOWN_SECONDS`
-
 Histórico: até 10 mensagens. Timeout público: 20 segundos.
 
-Contrato de falha pública:
+Falha pública deve retornar `silent: true` e resposta vazia. Nunca reintroduzir o fallback técnico repetitivo sem decisão explícita.
 
-```json
-{
-  "status": "temporarily_unavailable",
-  "retryable": true,
-  "assistant": {
-    "answer": "",
-    "provider": "fallback",
-    "model": "customer-service-fallback",
-    "durationMs": 0,
-    "silent": true
-  }
-}
-```
-
-Nunca reintroduzir mensagem como “No momento não consegui concluir...” sem decisão explícita.
-
-## 10. Workflow 20 — WhatsApp público
+## 11. Workflow 20 — WhatsApp público
 
 Nós:
 
@@ -268,19 +290,9 @@ Nós:
 6. `Preparar resposta`
 7. `Responder WhatsApp`
 
-Proteções:
+Proteções: instância correta, `fromMe`, grupo, mídia, dedup, sessão, horário, `silent`, sem banco.
 
-- instância correta;
-- ignora `fromMe`;
-- ignora grupos;
-- ignora mídia;
-- deduplica messageId por 15 minutos;
-- mantém sessão/histórico;
-- respeita horário do programa;
-- respeita `assistant.silent`;
-- não acessa banco.
-
-## 11. Workflow 30 — Telegram público
+## 12. Workflow 30 — Telegram público
 
 Nós:
 
@@ -292,77 +304,148 @@ Nós:
 6. `Preparar resposta`
 7. `Responder Telegram`
 
-Características:
+O JSON versionado pode permanecer `active:false`; o script de deploy prepara ID estável `DOMO30TELEGRAM01`, valida credenciais, publica e ativa a instância operacional.
 
-- `active: false` no arquivo versionado;
-- exige credencial Telegram API configurada no n8n;
-- credencial nunca deve ir ao Git;
-- somente chat privado;
-- ignora `from.is_bot`;
-- ignora mídia automaticamente;
-- deduplica por chat/message;
-- sessão independente do WhatsApp;
-- adapta apenas linguagem específica do canal;
-- usa a mesma rota pública e a mesma política de segurança.
+## 13. Telegram — estado validado em produção
 
-## 12. Sessões, deduplicação e `silent`
+Em 2026-09-07 foram validados:
 
-WhatsApp usa chave baseada em instância + remoteJid. Telegram usa `telegram:<chat_id>`.
+- workflow `DOMO30TELEGRAM01` com `active=true`;
+- `Olá` -> saudação;
+- `Por onde eu mando o áudio?` -> resposta contextualizada;
+- `Que horas posso mandar?` -> 21h–22h;
+- `Ainda recebe áudio pelo Telegram?` -> confirmação;
+- `Amém` -> nenhuma resposta;
+- áudio de teste -> nenhuma resposta automática;
+- execuções recentes do workflow 30 -> `success`;
+- n8n saudável;
+- API saudável;
+- Funnel ativo.
 
-Deduplicação: TTL de 15 minutos.
+## 14. Deploy do Telegram
 
-Sessões: aproximadamente 30 minutos, histórico limitado a 10 itens.
+Fluxo recomendado:
 
-`assistant.silent=true` significa atualizar contexto quando apropriado e encerrar sem enviar resposta.
+```bash
+./scripts/deploy-telegram-workflow.sh import
+./scripts/deploy-telegram-workflow.sh verify
+./scripts/deploy-telegram-workflow.sh publish
+```
 
-## 13. Segurança SQL
+A credencial Telegram API deve existir somente no n8n e ser associada a `Telegram Trigger` e `Responder Telegram`.
 
-Somente o agente administrativo pode usar o caminho SQL.
+## 15. Recuperação automática do DOMO
 
-Proteções testadas incluem:
+Script:
 
-- SELECT autorizado;
-- bloqueio de `SELECT *`;
-- colunas protegidas;
-- DELETE/UPDATE/UNION;
-- múltiplas instruções;
-- comentários;
-- `SLEEP`;
-- JOIN autorizado;
-- LIMIT controlado;
-- resolução por ID.
+```text
+scripts/recover-public-access.sh
+```
 
-Workflow 20 e workflow 30 nunca devem chamar `/internal/assistant/query`.
+Timer de usuário:
 
-## 14. Incidentes importantes
+```text
+infrastructure/systemd/domo-access-recovery.service
+infrastructure/systemd/domo-access-recovery.timer
+```
+
+Instalação operacional:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp infrastructure/systemd/domo-access-recovery.service ~/.config/systemd/user/
+cp infrastructure/systemd/domo-access-recovery.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now domo-access-recovery.timer
+```
+
+O timer roda aproximadamente a cada minuto e verifica:
+
+- Docker;
+- API;
+- n8n;
+- Tailscale;
+- Funnel;
+- workflows 10, 20 e 30 ativos;
+- webhooks WhatsApp locais;
+- webhook público via Funnel.
+
+Só reinicia o componente defeituoso. Não toca na Agenda.
+
+Log:
+
+```text
+~/.local/state/domo/public-access-recovery.log
+```
+
+Estado validado:
+
+```text
+status=0/SUCCESS
+OK DOMO operacional: API, n8n, workflows e Funnel.
+```
+
+## 16. Recuperação da Agenda
+
+A Agenda possui mecanismo próprio em `~/agenda`, com `agenda-access-recovery.timer`. Ele não pertence ao repositório DOMO.
+
+Após suspensão/reinício, os dois projetos se recuperam por timers separados quando o WSL/systemd estão ativos.
+
+Um reboot completo do Windows ainda depende de o WSL/Docker Desktop serem iniciados. Uma tarefa do Agendador de Tarefas do Windows pode ser adicionada futuramente para automatizar essa última camada.
+
+## 17. Segurança SQL
+
+Somente o agente administrativo usa SQL.
+
+Proteções testadas incluem SELECT autorizado, bloqueio de `SELECT *`, colunas protegidas, DELETE, UPDATE, UNION, múltiplas instruções, comentários, `SLEEP`, JOIN autorizado, LIMIT e resolução por ID.
+
+Workflows 20 e 30 nunca devem chamar `/internal/assistant/query`.
+
+## 18. Incidentes conhecidos
 
 ### Fallback técnico repetido
 
-Gemini apresentou rejeições rápidas e timeouts de ~20 s. O fallback público foi alterado para `silent: true`. Não reverter.
+Corrigido com `silent: true`. Não reverter.
 
 ### `Identifier 'state' has already been declared`
 
-O workflow 20 já falhou por declaração duplicada de `const state` em Code Node. Há teste de sintaxe. Code Nodes devem ser testados envolvidos por função assíncrona, pois contêm `return`:
+Workflow 20 já falhou por declaração duplicada em Code Node. Testes de sintaxe devem envolver o código em função assíncrona para permitir `return`.
 
-```js
-new vm.Script(`(async () => {\n${code}\n})()`)
+### `webhookId` perdido no workflow 20
+
+Preservar `5a44db51-36ba-440d-878b-fb01678a921b`; perda do ID já causou path incorreto e 404.
+
+### Telegram exigindo HTTPS
+
+Causa: Telegram rejeita webhook HTTP. Resolvido com Tailscale Funnel.
+
+### n8n gerando localhost apesar do Funnel
+
+Em n8n 2.33.4 a variável correta é `N8N_WEBHOOK_URL`. Usar `WEBHOOK_URL` manteve Test URL em `http://localhost:5678` e gerou erro do Telegram.
+
+### Tailscale path retornando 404
+
+O proxy deve preservar os prefixos:
+
+```text
+/webhook/ -> http://n8n:5678/webhook/
+/webhook-test/ -> http://n8n:5678/webhook-test/
 ```
 
-### PostgreSQL via shell
+### Python runner n8n
 
-Executar `psql -U "$POSTGRES_USER"` pode usar `root` se a variável não estiver carregada no shell. Leia `.env` ou execute dentro do container com as variáveis corretas.
+Aviso de Python 3 ausente não é causa dos workflows atuais, que usam JavaScript.
 
-### n8n Python runner
+## 19. Testes
 
-Mensagem de Python 3 ausente no task runner interno foi observada. Os workflows DOMO aqui usam JavaScript; não confundir esse aviso com falha do atendimento.
+Último baseline confirmado antes do fechamento operacional do Telegram:
 
-## 15. Testes e validação
+- tests: `108`
+- fail: `0`
+- typecheck: `0`
+- build: `0`
 
-Baseline antes do Telegram: **101 testes aprovados**, typecheck e build verdes.
-
-O branch Telegram adiciona testes estruturais próprios; o total esperado aumenta após integração.
-
-Comandos obrigatórios:
+Comandos:
 
 ```bash
 cd ~/domo-platform/apps/api
@@ -375,60 +458,62 @@ git diff --check
 git status --short
 ```
 
-Após deploy da API:
+## 20. Diagnóstico ponta a ponta
+
+Quando WhatsApp ou Telegram não responder:
+
+1. confirme Docker;
+2. confira Evolution para WhatsApp;
+3. confira execução n8n;
+4. confira logs da API;
+5. confira Tailscale/Funnel para Telegram;
+6. confira workflow ativo;
+7. não reinicie todos os serviços sem identificar o elo quebrado.
+
+Comandos úteis:
 
 ```bash
-curl -fSs http://127.0.0.1:3001/health
-curl -fSs http://127.0.0.1:5678/healthz
+curl -fsS http://127.0.0.1:3001/health
+curl -fsS http://127.0.0.1:5678/healthz
+docker compose exec -T tailscale-n8n tailscale funnel status
+docker compose exec -T n8n n8n list:workflow
 ```
 
-## 16. Deploy do workflow 20
+## 21. Git
 
-Antes de importar, exporte backup do workflow ativo. Preserve ID `VAhyWtgWl6kzU8gL` e webhookId `5a44db51-36ba-440d-878b-fb01678a921b`.
+Nunca commit:
 
-Após import/publish, reinicie n8n se necessário e confirme `webhook_entity` e HTTP 200 do webhook.
+- `.env`;
+- tokens Telegram/Tailscale/Evolution/Gemini;
+- senhas;
+- logs privados;
+- backups com credenciais;
+- dados pessoais.
 
-## 17. Deploy inicial do workflow 30
+Fluxo:
 
-O workflow Telegram é novo e não deve ser ativado automaticamente por commit.
+```bash
+git status --short
+git diff --check
+git add <arquivos>
+git diff --cached --stat
+git commit -m "..."
+git push
+```
 
-Procedimento:
+## 22. Critério de pronto
 
-1. atualizar o clone local para o commit integrado;
-2. importar `infrastructure/n8n/workflows/30-atendimento-telegram.json`;
-3. criar/selecionar credencial **Telegram API** com token do BotFather;
-4. associar a credencial a `Telegram Trigger` e `Responder Telegram`;
-5. manter `DOMO API Internal` no HTTP Request;
-6. testar manualmente;
-7. ativar/publicar somente depois dos testes;
-8. confirmar execução no n8n e resposta no Telegram.
+Uma mudança só está pronta quando:
 
-Consulte `docs/architecture/ATENDIMENTO-TELEGRAM.md` para checklist detalhado.
-
-## 18. Git e documentação
-
-`HANDOFF-DOMO-PLATFORM.md` é o único handoff canônico.
-
-Não criar novos arquivos `HANDOFF-DOMO-PLATFORM-AAAA-MM-DD.md`. Mudanças futuras devem atualizar este arquivo; o histórico do Git já preserva versões antigas.
-
-## 19. Critérios de pronto
-
-Uma mudança no atendimento público só está pronta quando:
-
-- testes passam;
+- teste de regressão passa;
 - typecheck passa;
 - build passa;
-- `git diff --check` passa;
-- API saudável;
-- n8n saudável;
-- workflow correspondente está publicado/ativo quando aplicável;
+- workflow e API estão saudáveis;
 - canal real foi testado;
-- não houve regressão no outro canal;
-- fallback técnico não aparece ao público;
-- handoff foi atualizado.
+- logs não mostram erro relevante;
+- documentação e este handoff foram atualizados;
+- GitHub reflete o estado operacional sem segredos.
 
-## 20. Próxima ação operacional do Telegram
+## 23. Prompt para outro agente de IA
 
-O código/versionamento pode ser concluído sem segredo, mas o bot real só passa a responder depois que o operador configurar no n8n a credencial Telegram API correspondente ao bot oficial e ativar o workflow 30.
-
-Não há token de bot no repositório e ele não deve ser adicionado.
+> Leia integralmente `HANDOFF-DOMO-PLATFORM.md` e a documentação em `docs/`. Este sistema está em uso real. Não misture o agente administrativo com os atendimentos públicos. Preserve workflow 20 `VAhyWtgWl6kzU8gL`, webhookId `5a44db51-36ba-440d-878b-fb01678a921b` e workflow Telegram operacional `DOMO30TELEGRAM01`. O Telegram usa `https://domo-n8n.tailbd3b60.ts.net/` via Tailscale Funnel e n8n 2.33.4 exige `N8N_WEBHOOK_URL`. O DOMO possui recovery automático próprio e jamais deve tocar em `~/agenda`. Antes de alterações, rode `git status --short`; depois, teste, typecheck, build, `git diff --check`, deploy controlado e validação ponta a ponta. Nunca exponha segredos.
