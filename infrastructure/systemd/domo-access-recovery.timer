@@ -1,0 +1,11 @@
+[Unit]
+Description=Monitorar e recuperar DOMO
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=domo-access-recovery.service
+
+[Install]
+WantedBy=timers.target
