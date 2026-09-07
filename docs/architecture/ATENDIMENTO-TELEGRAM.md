@@ -1,112 +1,162 @@
 # Atendimento Telegram — Momento do Presidiário
 
-## Objetivo
+## Estado atual
 
-O Telegram é um segundo canal do mesmo atendimento público do Momento do Presidiário. Ele não possui um segundo agente, uma segunda base de conhecimento ou acesso ao banco de dados.
+O Telegram está implantado como segundo canal do atendimento público do Momento do Presidiário.
 
-Fluxo:
+- Workflow: `DOMO - 30 - Atendimento Telegram`
+- Workflow ID operacional: `DOMO30TELEGRAM01`
+- API: `POST http://api:3001/internal/customer-service/query`
+- URL pública de webhook: `https://domo-n8n.tailbd3b60.ts.net/`
+- Tailscale Funnel: ativo
+- Credencial Telegram: armazenada somente no n8n
+- Atendimento público: isolado do agente administrativo e do banco
+
+O bot foi validado em modo permanente, sem `Execute workflow`, com execuções `success` no n8n.
+
+## Arquitetura
 
 ```text
 Telegram Bot
+  -> HTTPS público
+  -> Tailscale Funnel: domo-n8n.tailbd3b60.ts.net
   -> n8n: DOMO - 30 - Atendimento Telegram
-  -> POST http://api:3001/internal/customer-service/query
+  -> POST /internal/customer-service/query
   -> regras determinísticas / Gemini
   -> n8n
   -> Telegram Bot
 ```
 
-O WhatsApp continua no workflow 20 e o agente administrativo continua no workflow 10.
+O WhatsApp público continua no workflow 20. O agente administrativo continua no workflow 10.
 
-## Arquivo versionado
+## Tailscale Funnel
 
-`infrastructure/n8n/workflows/30-atendimento-telegram.json`
+O DOMO possui nó Tailscale próprio e não compartilha estado com a Agenda.
 
-O workflow fica versionado com `active: false` porque a credencial real do bot não deve ser armazenada no Git.
+- container: `domo-tailscale-n8n`
+- hostname Tailscale: `domo-n8n`
+- URL: `https://domo-n8n.tailbd3b60.ts.net`
+- volume: `domo-tailscale-n8n-state`
+- configuração: `infrastructure/tailscale/n8n/serve.json`
 
-## Credencial necessária
+Handlers públicos:
 
-Crie no n8n uma credencial do tipo **Telegram API** usando o token fornecido pelo BotFather. Não coloque o token em JSON, documentação, `.env.example`, commit ou log.
+```text
+/webhook/      -> http://n8n:5678/webhook/
+/webhook-test/ -> http://n8n:5678/webhook-test/
+```
 
-Depois de importar o workflow 30, associe a mesma credencial Telegram aos dois nós:
+O editor do n8n permanece local em `http://localhost:5678`.
+
+Para n8n 2.33.4, a variável correta para a base externa de webhooks é:
+
+```text
+N8N_WEBHOOK_URL=https://domo-n8n.tailbd3b60.ts.net/
+```
+
+Não substituir por `WEBHOOK_URL`; essa versão do n8n emite aviso explícito para usar `N8N_WEBHOOK_URL`.
+
+## Credencial Telegram
+
+Criar no n8n uma credencial `Telegram API` com o token fornecido pelo BotFather.
+
+Usar a mesma credencial nos nós:
 
 - `Telegram Trigger`
 - `Responder Telegram`
 
-O nó `Consultar atendimento` deve continuar usando a credencial existente `DOMO API Internal`.
+Nunca colocar o token em:
 
-## Ativação
-
-1. Faça backup dos workflows ativos antes da mudança.
-2. Importe `30-atendimento-telegram.json`.
-3. Abra o workflow `DOMO - 30 - Atendimento Telegram`.
-4. Configure a credencial Telegram no trigger e no nó de resposta.
-5. Faça um teste manual com o bot antes de ativar.
-6. Ative/publice o workflow somente depois do teste.
-7. Reinicie somente o n8n se a versão em produção exigir restart para aplicar publicação.
+- Git
+- `.env.example`
+- workflow JSON
+- documentação
+- logs
 
 ## Regras do canal
 
-- somente chat privado recebe resposta automática;
+- apenas chat privado recebe resposta automática;
 - mensagens de bot são ignoradas;
 - grupos são ignorados;
-- texto elegível é enviado ao mesmo `/internal/customer-service/query` usado pelo WhatsApp;
+- texto elegível usa a mesma API pública do WhatsApp;
 - áudio/voice, imagem, vídeo, documento e sticker não recebem resposta automática;
-- o áudio continua disponível no Telegram para tratamento manual pela equipe;
-- mensagens são deduplicadas por `telegram:<chat_id>:<message_id>`;
-- sessões usam `telegram:<chat_id>` e não se misturam com sessões WhatsApp;
+- áudio enviado pelo Telegram continua disponível para seleção manual da equipe;
+- sessões: `telegram:<chat_id>`;
+- deduplicação: `telegram:<chat_id>:<message_id>`;
 - `assistant.silent=true` encerra sem enviar mensagem;
-- falha pública do Gemini continua silenciosa;
-- em dias úteis, o atendimento automático continua suspenso durante a janela do programa, 21h–22h, seguindo a política do workflow 20.
+- falha pública do Gemini permanece silenciosa;
+- segunda a sexta, 21h–22h, o atendimento automático segue a suspensão do programa, exceto regras de fim de semana/feriado já implementadas.
 
 ## Linguagem específica do Telegram
 
-A API mantém as regras institucionais centralizadas. O workflow 30 adapta apenas frases de canal para evitar respostas estranhas como “envie pelo Telegram” quando a pessoa já está no Telegram.
+A base de conhecimento continua centralizada na API. O workflow adapta apenas frases dependentes do canal.
 
-Exemplo esperado:
+Exemplo:
 
 > Você pode enviar o áudio por aqui mesmo, pelo Telegram, que é o canal oficial do Momento do Presidiário.
 
-O WhatsApp continua informando que o Telegram é o canal oficial/preferencial e que o WhatsApp recebe os áudios quando anunciado.
+No WhatsApp, a resposta continua orientando o Telegram como canal preferencial e o WhatsApp quando o recebimento for anunciado.
+
+## Testes já validados em produção
+
+Foram validados:
+
+- `Olá` -> saudação do programa;
+- `Por onde eu mando o áudio?` -> resposta contextualizada para Telegram;
+- `Que horas posso mandar?` -> 21h às 22h;
+- `Ainda recebe áudio pelo Telegram?` -> confirmação do canal;
+- `Amém` em sessão existente -> silêncio;
+- envio de áudio -> nenhuma resposta automática;
+- execuções do workflow 30 -> `success`;
+- workflow 30 -> `active=true`;
+- n8n -> saudável;
+- API -> saudável;
+- Funnel -> ativo.
+
+## Deploy seguro
+
+Script:
+
+```bash
+./scripts/deploy-telegram-workflow.sh import
+./scripts/deploy-telegram-workflow.sh verify
+./scripts/deploy-telegram-workflow.sh publish
+```
+
+O script prepara o ID estável `DOMO30TELEGRAM01` na importação, valida as credenciais e o isolamento do banco, publica, ativa e reinicia somente o n8n.
+
+## Recuperação após suspensão/reinício
+
+O DOMO possui recuperação independente da Agenda:
+
+```text
+scripts/recover-public-access.sh
+infrastructure/systemd/domo-access-recovery.service
+infrastructure/systemd/domo-access-recovery.timer
+```
+
+O timer verifica a cada minuto:
+
+- Docker;
+- API;
+- n8n;
+- Tailscale;
+- Funnel;
+- workflows 10, 20 e 30 ativos;
+- webhooks WhatsApp locais;
+- webhook público via Funnel.
+
+Ele só reinicia o componente com problema.
+
+A Agenda usa mecanismo próprio em `~/agenda` e nunca deve ser reiniciada pelo DOMO.
 
 ## Segurança
 
-O workflow Telegram jamais deve chamar:
+O workflow 30 nunca deve chamar:
 
 - `/internal/assistant/query`;
 - MariaDB/MySQL;
 - ferramentas SQL;
 - agente administrativo.
 
-O atendimento público permanece isolado do banco.
-
-## Testes
-
-A estrutura do workflow é coberta por:
-
-`apps/api/src/customer-service-telegram-workflow.test.ts`
-
-Antes de publicar mudanças:
-
-```bash
-cd ~/domo-platform/apps/api
-npm test
-npm run typecheck
-npm run build
-
-cd ~/domo-platform
-git diff --check
-```
-
-## Teste operacional mínimo
-
-Depois de configurar o bot:
-
-1. `Olá` -> saudação do programa.
-2. `Por onde envio o áudio?` -> orientação contextualizada para Telegram.
-3. `Ainda recebe áudio aqui?` -> orientação do canal.
-4. `Amém` em sessão existente -> nenhuma resposta.
-5. Enviar áudio/voice -> nenhuma resposta automática.
-6. Mensagem em grupo -> nenhuma resposta automática.
-7. Pergunta aberta -> resposta via agente público; se Gemini falhar, não enviar fallback técnico.
-
-Não ativar o workflow se qualquer um desses testes falhar.
+A autenticação do bot e do Tailscale deve permanecer fora do Git.
