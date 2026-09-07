@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW_FILE="$ROOT_DIR/infrastructure/n8n/workflows/30-atendimento-telegram.json"
 WORKFLOW_NAME="DOMO - 30 - Atendimento Telegram"
-TMP_CONTAINER_FILE="/tmp/domo-30-atendimento-telegram.json"
+WORKFLOW_ID="DOMO30TELEGRAM01"
+TMP_HOST_FILE="/tmp/domo-30-atendimento-telegram-import.json"
+TMP_CONTAINER_FILE="/tmp/domo-30-atendimento-telegram-import.json"
 TMP_EXPORT_FILE="/tmp/domo-30-atendimento-telegram-export.json"
 
 usage() {
@@ -19,111 +21,112 @@ Fluxo recomendado:
   2. configurar no n8n a credencial Telegram API nos nós
      "Telegram Trigger" e "Responder Telegram"
   3. verify
-  4. publish
+  4. testar manualmente
+  5. publish
 
 O script nunca recebe nem grava o token do BotFather.
+O workflow usa o ID estável DOMO30TELEGRAM01.
 EOF
 }
 
 require_file() {
-  if [[ ! -f "$WORKFLOW_FILE" ]]; then
+  [[ -f "$WORKFLOW_FILE" ]] || {
     echo "ERRO: workflow não encontrado: $WORKFLOW_FILE" >&2
     exit 1
-  fi
-}
-
-workflow_id() {
-  docker compose exec -T n8n n8n list:workflow 2>/dev/null \
-    | awk -F'|' -v name="$WORKFLOW_NAME" '$2 == name { print $1; exit }'
+  }
 }
 
 check_health() {
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 30); do
     if curl -fsS http://127.0.0.1:5678/healthz >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
   done
-
   echo "ERRO: n8n não ficou saudável." >&2
   return 1
 }
 
-cmd_import() {
-  require_file
+workflow_exists() {
+  docker compose exec -T n8n n8n list:workflow 2>/dev/null \
+    | awk -F'|' -v id="$WORKFLOW_ID" -v name="$WORKFLOW_NAME" \
+      '$1 == id && $2 == name { found=1 } END { exit found ? 0 : 1 }'
+}
 
-  echo '=== VALIDAR JSON VERSIONADO ==='
-  node -e '
-    const fs = require("fs");
-    const file = process.argv[1];
-    const w = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (w.name !== "DOMO - 30 - Atendimento Telegram") {
-      throw new Error(`Nome inesperado: ${w.name}`);
-    }
-    if (w.active !== false) {
-      throw new Error("O workflow versionado deve permanecer active=false");
-    }
-    const names = new Set((w.nodes ?? []).map(n => n.name));
-    for (const required of [
-      "Telegram Trigger",
-      "Preparar atendimento",
-      "Responder?",
-      "Consultar atendimento",
-      "Registrar contexto",
-      "Preparar resposta",
-      "Responder Telegram",
-    ]) {
-      if (!names.has(required)) {
-        throw new Error(`Nó obrigatório ausente: ${required}`);
-      }
-    }
-    console.log("OK: workflow 30 válido para importação.");
-  ' "$WORKFLOW_FILE"
+prepare_import_file() {
+  require_file
+  node - "$WORKFLOW_FILE" "$TMP_HOST_FILE" "$WORKFLOW_ID" <<'NODE'
+const fs = require('fs');
+const [source, target, workflowId] = process.argv.slice(2);
+const raw = JSON.parse(fs.readFileSync(source, 'utf8'));
+const workflow = Array.isArray(raw) ? raw[0] : raw;
+
+if (workflow.name !== 'DOMO - 30 - Atendimento Telegram') {
+  throw new Error(`Nome inesperado: ${workflow.name}`);
+}
+
+const names = new Set((workflow.nodes ?? []).map(node => node.name));
+for (const required of [
+  'Telegram Trigger',
+  'Preparar atendimento',
+  'Responder?',
+  'Consultar atendimento',
+  'Registrar contexto',
+  'Preparar resposta',
+  'Responder Telegram',
+]) {
+  if (!names.has(required)) {
+    throw new Error(`Nó obrigatório ausente: ${required}`);
+  }
+}
+
+workflow.id = workflowId;
+workflow.active = false;
+fs.writeFileSync(target, JSON.stringify(workflow, null, 2) + '\n');
+console.log(`OK: import preparado com ID ${workflowId}.`);
+NODE
+}
+
+cmd_import() {
+  echo '=== PREPARAR WORKFLOW ==='
+  prepare_import_file
 
   echo
   echo '=== COPIAR PARA O N8N ==='
-  docker compose cp "$WORKFLOW_FILE" "n8n:$TMP_CONTAINER_FILE"
+  docker compose cp "$TMP_HOST_FILE" "n8n:$TMP_CONTAINER_FILE"
 
   echo
-  echo '=== IMPORTAR ==='
+  echo '=== IMPORTAR DESATIVADO ==='
   docker compose exec -T n8n \
     n8n import:workflow \
     --input="$TMP_CONTAINER_FILE"
 
   echo
-  echo '=== LOCALIZAR WORKFLOW ==='
-  local id
-  id="$(workflow_id)"
-
-  if [[ -z "$id" ]]; then
-    echo "ERRO: workflow importado não foi localizado." >&2
+  if ! workflow_exists; then
+    echo "ERRO: workflow $WORKFLOW_ID não foi localizado após importação." >&2
     exit 1
   fi
 
   echo "OK: $WORKFLOW_NAME"
-  echo "ID: $id"
+  echo "ID: $WORKFLOW_ID"
   echo
   echo 'PRÓXIMO PASSO:'
-  echo 'Abra o workflow no n8n e associe a credencial Telegram API aos nós:'
+  echo 'Associe a mesma credencial Telegram API aos nós:'
   echo '  - Telegram Trigger'
   echo '  - Responder Telegram'
-  echo 'Depois execute:'
-  echo '  ./scripts/deploy-telegram-workflow.sh verify'
+  echo 'Depois rode: ./scripts/deploy-telegram-workflow.sh verify'
 }
 
 cmd_verify() {
-  local id
-  id="$(workflow_id)"
-
-  if [[ -z "$id" ]]; then
-    echo "ERRO: $WORKFLOW_NAME não encontrado no n8n." >&2
+  if ! workflow_exists; then
+    echo "ERRO: $WORKFLOW_NAME ($WORKFLOW_ID) não encontrado no n8n." >&2
     exit 1
   fi
 
-  echo "=== EXPORTAR WORKFLOW $id ==="
+  echo "=== EXPORTAR WORKFLOW $WORKFLOW_ID ==="
   docker compose exec -T n8n \
     n8n export:workflow \
-    --id="$id" \
+    --id="$WORKFLOW_ID" \
     --output="$TMP_EXPORT_FILE"
 
   echo
@@ -133,6 +136,10 @@ const fs = require('fs');
 const file = process.argv[2];
 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
 const w = Array.isArray(raw) ? raw[0] : raw;
+
+if (w.id !== 'DOMO30TELEGRAM01') {
+  throw new Error(`ID inesperado: ${w.id}`);
+}
 
 const node = name => (w.nodes ?? []).find(n => n.name === name);
 const trigger = node('Telegram Trigger');
@@ -149,14 +156,11 @@ const responderCredential = responder.credentials?.telegramApi;
 if (!triggerCredential) {
   throw new Error('Telegram Trigger ainda não possui credencial Telegram API.');
 }
-
 if (!responderCredential) {
   throw new Error('Responder Telegram ainda não possui credencial Telegram API.');
 }
-
 if (
-  triggerCredential.id &&
-  responderCredential.id &&
+  triggerCredential.id && responderCredential.id &&
   triggerCredential.id !== responderCredential.id
 ) {
   throw new Error('Trigger e resposta usam credenciais Telegram diferentes.');
@@ -180,32 +184,30 @@ for (const forbidden of [
 
 console.log('OK: credencial Telegram presente nos dois nós.');
 console.log('OK: workflow 30 usa somente o atendimento público.');
-console.log(`ID: ${w.id ?? '[não informado]'}`);
+console.log(`ID: ${w.id}`);
 console.log(`active: ${w.active === true}`);
 NODE
 
   echo
   echo 'VALIDAÇÃO CONCLUÍDA.'
-  echo 'Faça agora um teste manual pelo n8n antes de publicar.'
 }
 
 cmd_publish() {
-  local id
-  id="$(workflow_id)"
-
-  if [[ -z "$id" ]]; then
-    echo "ERRO: $WORKFLOW_NAME não encontrado no n8n." >&2
-    exit 1
-  fi
-
   echo '=== PRÉ-VALIDAÇÃO ==='
   cmd_verify
 
   echo
-  echo "=== PUBLICAR WORKFLOW $id ==="
+  echo "=== PUBLICAR WORKFLOW $WORKFLOW_ID ==="
   docker compose exec -T n8n \
     n8n publish:workflow \
-    --id="$id"
+    --id="$WORKFLOW_ID"
+
+  echo
+  echo '=== GARANTIR ATIVAÇÃO ==='
+  docker compose exec -T n8n \
+    n8n update:workflow \
+    --id="$WORKFLOW_ID" \
+    --active=true
 
   echo
   echo '=== REINICIAR SOMENTE N8N ==='
@@ -215,27 +217,14 @@ cmd_publish() {
   echo
   echo '=== RESULTADO ==='
   echo 'n8n saudável.'
-  echo "Workflow publicado: $WORKFLOW_NAME"
-  echo "ID: $id"
-  echo
-  echo 'Faça os testes reais do Telegram descritos em:'
-  echo '  docs/architecture/ATENDIMENTO-TELEGRAM.md'
+  echo "Workflow publicado e ativado: $WORKFLOW_NAME"
+  echo "ID: $WORKFLOW_ID"
 }
 
 cd "$ROOT_DIR"
-
 case "${1:-}" in
-  import)
-    cmd_import
-    ;;
-  verify)
-    cmd_verify
-    ;;
-  publish)
-    cmd_publish
-    ;;
-  *)
-    usage
-    exit 2
-    ;;
+  import) cmd_import ;;
+  verify) cmd_verify ;;
+  publish) cmd_publish ;;
+  *) usage; exit 2 ;;
 esac
