@@ -5,21 +5,16 @@ services:
     image: postgres:17-alpine
     container_name: domo-postgres
     restart: unless-stopped
-
     environment:
       TZ: ${TZ}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-
     ports:
       - "127.0.0.1:5433:5432"
-
     volumes:
-
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
-
     healthcheck:
       test:
         - CMD-SHELL
@@ -28,7 +23,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-
     networks:
       - backend
 
@@ -110,7 +104,6 @@ services:
     image: mariadb:10.11.18
     container_name: domo-mariadb-replica
     restart: unless-stopped
-
     environment:
       TZ: ${TZ}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -119,18 +112,14 @@ services:
       REPLICA_GREEN_DATABASE: ${REPLICA_GREEN_DATABASE}
       MYSQL_READONLY_USER: ${MYSQL_READONLY_USER}
       MYSQL_READONLY_PASSWORD: ${MYSQL_READONLY_PASSWORD}
-
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-
     ports:
       - "127.0.0.1:3307:3306"
-
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./infrastructure/mariadb/init:/docker-entrypoint-initdb.d:ro
-
     healthcheck:
       test:
         - CMD-SHELL
@@ -139,7 +128,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
     networks:
       - backend
       - edge
@@ -148,7 +136,6 @@ services:
     image: docker.n8n.io/n8nio/n8n:2.33.4
     container_name: domo-n8n
     restart: unless-stopped
-
     environment:
       TZ: ${TZ}
       GENERIC_TIMEZONE: ${TZ}
@@ -156,24 +143,20 @@ services:
       DOMO_WHATSAPP_COMMAND_PREFIX: ${DOMO_WHATSAPP_COMMAND_PREFIX}
       DOMO_WHATSAPP_INSTANCE_NAME: ${DOMO_WHATSAPP_INSTANCE_NAME}
       DOMO_WHATSAPP_SESSION_MINUTES: ${DOMO_WHATSAPP_SESSION_MINUTES:-20}
-
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
       DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
       DB_POSTGRESDB_USER: ${POSTGRES_USER}
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
-
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
-
       N8N_HOST: ${N8N_HOST}
       N8N_PORT: ${N8N_PORT}
       N8N_PROTOCOL: ${N8N_PROTOCOL}
       N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
-
       N8N_SECURE_COOKIE: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
@@ -181,33 +164,46 @@ services:
       N8N_RUNNERS_TASK_TIMEOUT: "60"
       N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: "268435456"
       N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: "1000"
-
     ports:
       - "127.0.0.1:5678:5678"
-
     volumes:
       - n8n_data:/home/node/.n8n
-
     depends_on:
       postgres:
         condition: service_healthy
-
     networks:
       - backend
+      - edge
+
+  tailscale-n8n:
+    image: tailscale/tailscale:v1.102.3
+    container_name: domo-tailscale-n8n
+    hostname: domo-n8n
+    restart: unless-stopped
+    environment:
+      TS_AUTH_ONCE: "true"
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_HOSTNAME: domo-n8n
+      TS_LOCAL_ADDR_PORT: "[::]:9002"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+    volumes:
+      - tailscale_n8n_state:/var/lib/tailscale
+      - ./infrastructure/tailscale/n8n:/config:ro
+    networks:
       - edge
 
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-
     image: domo-api:0.1.0
     container_name: domo-api
     restart: unless-stopped
     depends_on:
       mariadb:
         condition: service_healthy
-
     environment:
       TZ: ${TZ}
       API_PORT: 3001
@@ -221,10 +217,8 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_READONLY_USER}
       MYSQL_PASSWORD: ${MYSQL_READONLY_PASSWORD}
-
     ports:
       - "127.0.0.1:${API_PORT}:3001"
-
     healthcheck:
       test:
         - CMD
@@ -235,7 +229,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
     networks:
       - backend
       - edge
@@ -244,19 +237,14 @@ services:
     image: ollama/ollama:0.32.6
     container_name: domo-ollama
     restart: unless-stopped
-
     gpus: all
-
     environment:
       TZ: ${TZ}
       OLLAMA_KEEP_ALIVE: 5m
-
     ports:
       - "127.0.0.1:11434:11434"
-
     volumes:
       - ollama_data:/root/.ollama
-
     networks:
       - backend
       - edge
@@ -264,29 +252,24 @@ services:
 volumes:
   evolution_postgres_data:
     name: domo-evolution-postgres-data
-
   evolution_redis_data:
     name: domo-evolution-redis-data
-
   evolution_instances:
     name: domo-evolution-instances
-
   postgres_data:
     name: domo-postgres-data
-
   n8n_data:
     name: domo-n8n-data
-
   mariadb_data:
     name: domo-mariadb-data
-
   ollama_data:
     name: domo-ollama-data
+  tailscale_n8n_state:
+    name: domo-tailscale-n8n-state
 
 networks:
   backend:
     name: domo-backend
     internal: true
-
   edge:
     name: domo-edge
