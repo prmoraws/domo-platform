@@ -1,0 +1,22 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "${TS_CERT_DOMAIN}:443": {
+      "Handlers": {
+        "/webhook/": {
+          "Proxy": "http://n8n:5678/webhook/"
+        },
+        "/webhook-test/": {
+          "Proxy": "http://n8n:5678/webhook-test/"
+        }
+      }
+    }
+  },
+  "AllowFunnel": {
+    "${TS_CERT_DOMAIN}:443": true
+  }
+}
