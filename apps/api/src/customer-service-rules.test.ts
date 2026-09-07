@@ -14,7 +14,7 @@ test('orienta envio de áudio', () => {
   assert.equal(result.matched, true);
   assert.equal(result.rule, 'send_audio');
   assert.match(result.answer ?? '', /20 segundos/);
-  assert.match(result.answer ?? '', /21h e 22h/);
+  assert.match(result.answer ?? '', /Telegram/i);
 });
 
 test('orienta sobre conteúdo somente quando perguntado', () => {
@@ -106,7 +106,7 @@ test('inclui saudação somente na primeira interação', () => {
 
   assert.match(
     first.answer ?? '',
-    /Programa Momento do Presidiário/,
+    /Missionária Virtual da UNP/,
   );
 
   const second = resolveCustomerServiceRule({
@@ -157,7 +157,7 @@ test('responde saudação inicial sem chamar IA', () => {
     result.answer,
     [
       'Boa noite!',
-      'Programa Momento do Presidiário. Em que posso ajudar?',
+      'Sou a Missionária Virtual da UNP. Como posso ajudar?',
     ].join('\n'),
   );
 });
@@ -301,7 +301,7 @@ test('informa que Telegram continua recebendo áudios', () => {
 
     assert.match(
       result.answer ?? '',
-      /canal oficial/i,
+      /Telegram/i,
     );
 
     assert.match(
@@ -435,7 +435,7 @@ test('amém na primeira interação ainda recebe acolhimento', () => {
 
   assert.match(
     result.answer ?? '',
-    /Programa Momento do Presidiário/,
+    /Missionária Virtual da UNP/,
   );
 });
 
@@ -484,7 +484,7 @@ test('orienta canal preferencial para envio do áudio', () => {
 
     assert.match(
       result.answer ?? '',
-      /canal oficial/i,
+      /Telegram/i,
     );
 
     assert.match(
@@ -576,15 +576,7 @@ test('entende abreviações sobre horário de envio', () => {
       /21h e 22h/i,
     );
 
-    assert.match(
-      result.answer ?? '',
-      /Telegram/i,
-    );
 
-    assert.match(
-      result.answer ?? '',
-      /quando.*anunciado/i,
-    );
   }
 });
 
@@ -703,5 +695,97 @@ test('orientação genérica de envio não informa espontaneamente dia seguinte'
   assert.doesNotMatch(
     result.answer ?? '',
     /dia seguinte|amanhã/i,
+  );
+});
+
+test('apresenta Missionária Virtual da UNP na primeira interação', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Olá',
+      firstInteraction: true,
+      localTime: '10:00',
+      channel: 'telegram',
+    });
+
+  assert.equal(
+    result.rule,
+    'initial_greeting',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /Missionária Virtual da UNP/,
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /Como posso ajudar\?/,
+  );
+});
+
+test('responde de forma curta quando perguntam se pode enviar agora', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Posso enviar áudio agora?',
+      firstInteraction: false,
+      channel: 'telegram',
+    });
+
+  assert.equal(
+    result.rule,
+    'can_send_audio_now',
+  );
+
+  assert.equal(
+    result.answer,
+    'Sim, pode enviar o áudio agora.',
+  );
+});
+
+test('no Telegram orienta envio pelo próprio canal', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Como faço para enviar um áudio para meu familiar?',
+      firstInteraction: false,
+      channel: 'telegram',
+    });
+
+  assert.equal(
+    result.rule,
+    'send_audio',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /por aqui mesmo/i,
+  );
+
+  assert.doesNotMatch(
+    result.answer ?? '',
+    /Preferencialmente.*Telegram/i,
+  );
+
+  assert.doesNotMatch(
+    result.answer ?? '',
+    /Este WhatsApp/i,
+  );
+});
+
+test('no WhatsApp preserva orientação para Telegram preferencial', () => {
+  const result =
+    resolveCustomerServiceRule({
+      message: 'Como faço para enviar um áudio para meu familiar?',
+      firstInteraction: false,
+      channel: 'whatsapp',
+    });
+
+  assert.equal(
+    result.rule,
+    'send_audio',
+  );
+
+  assert.match(
+    result.answer ?? '',
+    /Preferencialmente.*Telegram/i,
   );
 });

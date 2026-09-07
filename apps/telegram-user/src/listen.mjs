@@ -282,6 +282,8 @@ client.addEventHandler(
             },
             body: JSON.stringify({
               message: text,
+              channel: 'telegram',
+              contactId: senderKey,
               firstInteraction,
               isHoliday:
                 operational.isHoliday,

@@ -43,7 +43,7 @@ test('resolve saudação inicial sem chamar Gemini', async () => {
       result.answer,
       [
         'Boa noite!',
-        'Programa Momento do Presidiário. Em que posso ajudar?',
+        'Sou a Missionária Virtual da UNP. Como posso ajudar?',
       ].join('\n'),
     );
 

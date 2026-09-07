@@ -21,6 +21,7 @@ import {
 
 import {
   runCustomerServiceAgent,
+  type CustomerServiceAgentInput,
   type CustomerServiceHistoryItem,
 } from './customer-service-agent.js';
 
@@ -386,6 +387,8 @@ interface CustomerServiceQueryBody {
   isHoliday?: unknown;
   localDate?: unknown;
   localTime?: unknown;
+  channel?: unknown;
+  contactId?: unknown;
   history?: unknown;
 }
 
@@ -437,12 +440,25 @@ app.post<{
     }
 
     try {
-      const customerServiceInput = {
+      const customerServiceInput: CustomerServiceAgentInput = {
         message: rawMessage.trim(),
         firstInteraction:
           request.body?.firstInteraction === true,
         isHoliday:
           request.body?.isHoliday === true,
+        channel:
+          request.body?.channel === 'telegram'
+            ? 'telegram'
+            : 'whatsapp',
+        ...(typeof request.body?.contactId === 'string' &&
+        request.body.contactId.trim().length > 0
+          ? {
+              contactId:
+                request.body.contactId
+                  .trim()
+                  .slice(0, 255),
+            }
+          : {}),
         history,
         ...(typeof request.body?.localDate === 'string'
           ? {

@@ -3,6 +3,7 @@ export interface CustomerServiceRuleInput {
   firstInteraction?: boolean;
   isHoliday?: boolean;
   localTime?: string;
+  channel?: 'whatsapp' | 'telegram';
 }
 
 export interface CustomerServiceRuleResult {
@@ -50,7 +51,7 @@ const initialGreeting = (
   input: CustomerServiceRuleInput,
 ): string => [
   greetingForTime(input.localTime),
-  'Programa Momento do Presidiário. Em que posso ajudar?',
+  'Sou a Missionária Virtual da UNP. Como posso ajudar?',
 ].join('\n');
 
 const withInitialGreeting = (
@@ -248,6 +249,30 @@ export const resolveCustomerServiceRule = (
     };
   }
 
+  const asksCanSendAudioNow =
+    (
+      /\b(posso|pode|consigo|da para)\b.*\b(enviar|mandar)\b.*\b(audio|mensagem|recado)\b.*\b(agora|nesse momento|neste momento)\b/.test(
+        text,
+      ) ||
+      /\b(posso|pode|consigo|da para)\b.*\b(enviar|mandar)\b.*\b(agora|nesse momento|neste momento)\b/.test(
+        text,
+      ) ||
+      /\b(agora|nesse momento|neste momento)\b.*\b(posso|pode|consigo)\b.*\b(enviar|mandar)\b/.test(
+        text,
+      )
+    );
+
+  if (asksCanSendAudioNow) {
+    return {
+      matched: true,
+      rule: 'can_send_audio_now',
+      answer: withInitialGreeting(
+        'Sim, pode enviar o áudio agora.',
+        input,
+      ),
+    };
+  }
+
   // Perguntas específicas sobre quando o áudio enviado será veiculado.
   // Esta informação não deve ser acrescentada espontaneamente às
   // orientações gerais de envio.
@@ -336,27 +361,23 @@ export const resolveCustomerServiceRule = (
     );
 
   if (wantsSendMessage) {
-    const holidayNote =
-      input.isHoliday === true
-        ? ' Em feriados, o programa é gravado.'
-        : '';
+    const answer =
+      input.channel === 'telegram'
+        ? [
+            'Pode enviar o áudio por aqui mesmo.',
+            'Ele deve ter até 20 segundos.',
+          ].join(' ')
+        : [
+            'Preferencialmente, envie o áudio pelo Telegram.',
+            'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
+            'O áudio deve ter até 20 segundos.',
+          ].join(' ');
 
     return {
       matched: true,
       rule: 'send_audio',
       answer: withInitialGreeting(
-        [
-          'Para enviar uma mensagem ao seu familiar, envie um áudio de até 20 segundos.',
-          'Preferencialmente, envie pelo Telegram, que é o canal oficial do Momento do Presidiário.',
-          'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
-          'O áudio deve ser enviado entre 21h e 22h.',
-          'Não é uma conversa direta com ele(a); o áudio poderá ser utilizado durante o programa.',
-          'Mensagens de texto não são lidas no ar.',
-          holidayNote,
-        ]
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim(),
+        answer,
         input,
       ),
     };
@@ -378,11 +399,7 @@ export const resolveCustomerServiceRule = (
       matched: true,
       rule: 'audio_sending_time',
       answer: withInitialGreeting(
-        [
-          'Os áudios devem ser enviados entre 21h e 22h.',
-          'Preferencialmente, envie pelo Telegram, que é o canal oficial do Momento do Presidiário.',
-          'Este WhatsApp também recebe os áudios quando o envio por aqui for anunciado.',
-        ].join(' '),
+        'Os áudios devem ser enviados entre 21h e 22h.',
         input,
       ),
     };

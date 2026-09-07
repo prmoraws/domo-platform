@@ -81,7 +81,7 @@
         "sendBody": true,
         "options": {},
         "specifyBody": "json",
-        "jsonBody": "={{ { message: $('Preparar atendimento').item.json.text, firstInteraction: $('Preparar atendimento').item.json.firstInteraction, isHoliday: $('Preparar atendimento').item.json.isHoliday, localDate: $('Preparar atendimento').item.json.localDate, localTime: $('Preparar atendimento').item.json.localTime, history: $('Preparar atendimento').item.json.history } }}"
+        "jsonBody": "={{ { message: $('Preparar atendimento').item.json.text, channel: 'whatsapp', contactId: $('Preparar atendimento').item.json.remoteJid, firstInteraction: $('Preparar atendimento').item.json.firstInteraction, isHoliday: $('Preparar atendimento').item.json.isHoliday, localDate: $('Preparar atendimento').item.json.localDate, localTime: $('Preparar atendimento').item.json.localTime, history: $('Preparar atendimento').item.json.history } }}"
       },
       "credentials": {
         "httpHeaderAuth": {

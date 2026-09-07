@@ -237,6 +237,8 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       TZ: ${TZ}
       API_PORT: 3001
@@ -250,6 +252,11 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_READONLY_USER}
       MYSQL_PASSWORD: ${MYSQL_READONLY_PASSWORD}
+      CUSTOMER_SERVICE_PG_HOST: postgres
+      CUSTOMER_SERVICE_PG_PORT: 5432
+      CUSTOMER_SERVICE_PG_DATABASE: ${POSTGRES_DB}
+      CUSTOMER_SERVICE_PG_USER: ${POSTGRES_USER}
+      CUSTOMER_SERVICE_PG_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "127.0.0.1:${API_PORT}:3001"
     healthcheck:
